@@ -1,0 +1,18 @@
+{
+  "name": "foc-transparent-encryption-demos",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Runnable demos of the transparent-encryption key-source layer against foc-devnet",
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@filoz/synapse-core": "^0.9.1",
+    "@filoz/synapse-sdk": "^2.0.0",
+    "cborg": "^5.1.11",
+    "foc-encryption": "file:../foc-encryption-demo/packages/foc-encryption",
+    "multiformats": "14.0.5",
+    "viem": "^2.21.0"
+  }
+}
