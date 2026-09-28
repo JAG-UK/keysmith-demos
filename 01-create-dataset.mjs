@@ -30,15 +30,19 @@ const clientDataSetId = Keys.newClientDataSetId()
 note(`clientDataSetId = ${clientDataSetId}`)
 
 step('Sign DatasetKey once — twice, and compare (D3a)')
-const message = Keys.datasetKeyMessage({
+const ref = {
   chainId: chain.id,
   service: chain.contracts.fwss.address,
   payer: payer.evm_addr,
   clientDataSetId,
-})
-const secret = await Keys.datasetSecret(client.account, message)
-const DK = Keys.datasetKey(secret)
-const kc = Keys.commitment(secret)
+  epoch: 0, // the rotation slot: bump it to re-key this dataset in place
+}
+const message = Keys.datasetKeyMessage(ref)
+// purpose is not a parameter — it is a fixed domain separator. If callers could
+// choose it, two apps would derive different keys for the same dataset.
+note(`signing ${Object.keys(message).length} fields: ${Object.keys(message).join(', ')}`)
+// The signature never comes back: only the key and the public commitment do.
+const { dk: DK, commitment: kc } = await Keys.datasetKeys(client.account, ref)
 note(`signature is deterministic; DK = ${Keys.hex(DK).slice(0, 18)}…`)
 note(`foc/kc = ${kc}   (non-secret commitment, D3b)`)
 

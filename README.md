@@ -16,7 +16,9 @@ They exist to show a maintainer **where the layering cuts**:
 The library these demos argue for is proposed as `@filoz/keysmith` in
 [FilOzone/synapse-sdk#983](https://github.com/FilOzone/synapse-sdk/pull/983). That
 package is TypeScript and browser-safe; `lib/keys.mjs` here is the same construction in
-plain Node, kept readable for a walkthrough rather than shared with it.
+plain Node, kept readable for a walkthrough — and kept **byte-compatible**: the same
+signature yields the same keys in both, and a grant made by either opens with the other.
+`lib/keys.test.mjs` checks the construction offline in 25 assertions.
 
 ## Prerequisites
 

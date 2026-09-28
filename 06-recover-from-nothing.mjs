@@ -35,17 +35,13 @@ for (const info of page.items) {
   }
 
   note('re-signing DatasetKey from the wallet alone')
-  const secret = await Keys.datasetSecret(
-    client.account,
-    Keys.datasetKeyMessage({
-      chainId: chain.id,
-      service: chain.contracts.fwss.address,
-      payer: payer.evm_addr,
-      clientDataSetId: BigInt(clientDataSetId),
-    })
-  )
+  const { dk: DK, commitment: recomputed } = await Keys.datasetKeys(client.account, {
+    chainId: chain.id,
+    service: chain.contracts.fwss.address,
+    payer: payer.evm_addr,
+    clientDataSetId: BigInt(clientDataSetId),
+  })
 
-  const recomputed = Keys.commitment(secret)
   note(`foc/kc on chain   ${kc}`)
   note(`foc/kc recomputed ${recomputed}`)
   if (recomputed !== kc) {
@@ -54,7 +50,6 @@ for (const info of page.items) {
   }
   note('match: this is the right key, before a single byte is decrypted')
 
-  const DK = Keys.datasetKey(secret)
   const pieces = await listPiecesOnChain(client, dataSetId)
   note(`${pieces.length} live piece(s), listed from PDPVerifier`)
   for (const piece of pieces) {

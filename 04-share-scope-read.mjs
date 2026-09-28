@@ -25,16 +25,12 @@ const auditor = users[2]
 const payerClient = clientFor(payer.private_key_hex, chain)
 
 step('Payer derives DK, then two scope keys')
-const secret = await Keys.datasetSecret(
-  payerClient.account,
-  Keys.datasetKeyMessage({
-    chainId: chain.id,
-    service: chain.contracts.fwss.address,
-    payer: payer.evm_addr,
-    clientDataSetId,
-  })
-)
-const DK = Keys.datasetKey(secret)
+const { dk: DK } = await Keys.datasetKeys(payerClient.account, {
+  chainId: chain.id,
+  service: chain.contracts.fwss.address,
+  payer: payer.evm_addr,
+  clientDataSetId,
+})
 const scopes = { invoices: Keys.scopeKey(DK, 'invoices'), payroll: Keys.scopeKey(DK, 'payroll') }
 note(`SK(invoices) = ${Keys.hex(scopes.invoices).slice(0, 18)}…`)
 note(`SK(payroll)  = ${Keys.hex(scopes.payroll).slice(0, 18)}…  (unrelated)`)
@@ -62,12 +58,10 @@ for (const [scope, node] of Object.entries(scopes)) {
 
 step('Share the invoices scope only')
 const grant = await Keys.wrapTo(Keys.publicKeyOf(auditor.private_key_hex), scopes.invoices, {
-  v: 1,
-  node: 'scope:invoices',
-  chainId: chain.id,
-  service: chain.contracts.fwss.address,
-  payer: payer.evm_addr,
-  clientDataSetId: clientDataSetId.toString(),
+  ...Keys.grantDescriptor(
+    { chainId: chain.id, service: chain.contracts.fwss.address, payer: payer.evm_addr, clientDataSetId },
+    'scope:invoices'
+  ),
   dataSetId: String(dataSetId),
 })
 note(`grant → ${writeJson('grant-scope-invoices.json', grant)}`)

@@ -20,23 +20,17 @@ const recipient = users[1]
 const payerClient = clientFor(payer.private_key_hex, chain)
 
 step('Payer derives DK and wraps it to the recipient')
-const secret = await Keys.datasetSecret(
-  payerClient.account,
-  Keys.datasetKeyMessage({
-    chainId: chain.id,
-    service: chain.contracts.fwss.address,
-    payer: payer.evm_addr,
-    clientDataSetId,
-  })
-)
-const DK = Keys.datasetKey(secret)
-const grant = await Keys.wrapTo(Keys.publicKeyOf(recipient.private_key_hex), DK, {
-  v: 1,
-  node: 'dataset',
+const { dk: DK } = await Keys.datasetKeys(payerClient.account, {
   chainId: chain.id,
   service: chain.contracts.fwss.address,
   payer: payer.evm_addr,
-  clientDataSetId: clientDataSetId.toString(),
+  clientDataSetId,
+})
+const grant = await Keys.wrapTo(Keys.publicKeyOf(recipient.private_key_hex), DK, {
+  ...Keys.grantDescriptor(
+    { chainId: chain.id, service: chain.contracts.fwss.address, payer: payer.evm_addr, clientDataSetId },
+    'dataset'
+  ),
   dataSetId: String(dataSetId),
 })
 const path = writeJson('grant-dataset.json', grant)

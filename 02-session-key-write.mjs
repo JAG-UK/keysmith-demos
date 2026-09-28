@@ -26,16 +26,12 @@ const payerClient = clientFor(payer.private_key_hex, chain)
 
 // ── payer side ──────────────────────────────────────────────────────────────
 step('Payer re-derives DK for this dataset (one signature, same as demo 1)')
-const secret = await Keys.datasetSecret(
-  payerClient.account,
-  Keys.datasetKeyMessage({
-    chainId: chain.id,
-    service: chain.contracts.fwss.address,
-    payer: payer.evm_addr,
-    clientDataSetId,
-  })
-)
-const DK = Keys.datasetKey(secret)
+const { dk: DK } = await Keys.datasetKeys(payerClient.account, {
+  chainId: chain.id,
+  service: chain.contracts.fwss.address,
+  payer: payer.evm_addr,
+  clientDataSetId,
+})
 note(`DK = ${Keys.hex(DK).slice(0, 18)}…`)
 
 step('Mint a session key and authorise it on chain for AddPieces only')
@@ -54,12 +50,10 @@ note(`registry now authorises ${event.args.identity} → ${session.address}`)
 
 step('Wrap DK to the session key, and ship it with the key (D2 / O1)')
 const grant = await Keys.wrapTo(Keys.publicKeyOf(sessionPrivateKey), DK, {
-  v: 1,
-  node: 'dataset',
-  chainId: chain.id,
-  service: chain.contracts.fwss.address,
-  payer: payer.evm_addr,
-  clientDataSetId: clientDataSetId.toString(),
+  ...Keys.grantDescriptor(
+    { chainId: chain.id, service: chain.contracts.fwss.address, payer: payer.evm_addr, clientDataSetId },
+    'dataset'
+  ),
   dataSetId: String(dataSetId),
 })
 const path = writeJson('agent-credentials.json', { sessionPrivateKey, grant })
