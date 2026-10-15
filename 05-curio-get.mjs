@@ -8,7 +8,7 @@
  */
 import { randomBytes } from 'node:crypto'
 import { decrypt, parseEnvelope } from 'foc-encryption'
-import { devnet, load, need, note, readJson, step } from './lib/devnet.mjs'
+import { devnet, load, need, note, readBytes, step } from './lib/devnet.mjs'
 import * as Keys from './lib/keys.mjs'
 import * as Trace from './lib/trace.mjs'
 import { pieceUrl } from './lib/store.mjs'
@@ -40,8 +40,8 @@ try {
 }
 
 step('With the grant from demo 3, the same bytes open')
-const DK = await Keys.unwrapWith(users[1].private_key_hex, readJson('grant-dataset.json'))
-const key = Keys.keyForEnvelope(DK, envelope.appMetadata)
+const KK = await Keys.unwrapWith(users[1].private_key_hex, readBytes('grant-dataset.cbor'))
+const key = Keys.keyForEnvelope(KK, envelope.appMetadata)
 const text = new TextDecoder().decode(await decrypt(blob, key))
 note(`plaintext: "${text.slice(0, 60)}…"`)
 

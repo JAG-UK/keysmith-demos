@@ -1,13 +1,13 @@
 /**
  * 2. Delegating writes to a session key.
  *
- * The agent never touches the payer's wallet, so it can never derive DK. It is
- * given a copy of DK wrapped to the session key it already holds (D2), which
+ * The agent never touches the payer's wallet, so it can never derive KK. It is
+ * given a copy of KK wrapped to the session key it already holds (D2), which
  * travels with the session key itself (O1 default: no new state anywhere).
  *
  * Two authorities, deliberately separate:
  *   chain   — SessionKeyRegistry says this signer may call AddPieces
- *   crypto  — the wrapped DK says this signer may read and write this dataset
+ *   crypto  — the wrapped KK says this signer may read and write this dataset
  */
 import * as SessionKey from '@filoz/synapse-core/session-key'
 import { CoseAlgorithm, encrypt } from 'foc-encryption'
@@ -21,18 +21,14 @@ const { chain, sp, users } = devnet()
 const state = load()
 const dataSetId = need(state, 'dataSetId', '01-create-dataset.mjs')
 const clientDataSetId = BigInt(state.clientDataSetId)
+const keyspace = need(state, 'keyspace', '01-create-dataset.mjs')
 const payer = users[0]
 const payerClient = clientFor(payer.private_key_hex, chain)
 
 // ── payer side ──────────────────────────────────────────────────────────────
-step('Payer re-derives DK for this dataset (one signature, same as demo 1)')
-const { dk: DK } = await Keys.datasetKeys(payerClient.account, {
-  chainId: chain.id,
-  service: chain.contracts.fwss.address,
-  payer: payer.evm_addr,
-  clientDataSetId,
-})
-note(`DK = ${Keys.hex(DK).slice(0, 18)}…`)
+step('Payer re-derives KK for this dataset (one signature, same as demo 1)')
+const { kk: KK } = await Keys.keyspaceKeys(payerClient.account, { owner: payer.evm_addr, keyspace })
+note(`KK = ${Keys.hex(KK).slice(0, 18)}…`)
 
 step('Mint a session key and authorise it on chain for AddPieces only')
 const sessionPrivateKey = generatePrivateKey()
@@ -48,31 +44,30 @@ const { event } = await onDevnet(() =>
 )
 note(`registry now authorises ${event.args.identity} → ${session.address}`)
 
-step('Wrap DK to the session key, and ship it with the key (D2 / O1)')
-const grant = await Keys.wrapTo(Keys.publicKeyOf(sessionPrivateKey), DK, {
-  ...Keys.grantDescriptor(
-    { chainId: chain.id, service: chain.contracts.fwss.address, payer: payer.evm_addr, clientDataSetId },
-    'dataset'
-  ),
+step('Wrap KK to the session key, and ship it with the key (D2 / O1)')
+// dataSetId rides alongside the grant: informational, outside the authenticated descriptor.
+const grant = {
+  ...(await Keys.wrapTo(Keys.publicKeyOf(sessionPrivateKey), KK, Keys.grantDescriptor({ owner: payer.evm_addr, keyspace }, 'keyspace'))),
   dataSetId: String(dataSetId),
-})
-const path = writeJson('agent-credentials.json', { sessionPrivateKey, grant })
+}
+const path = writeJson('agent-credentials.json', { sessionPrivateKey, grant: Keys.hex(Keys.encodeGrant(grant)) })
 note(`agent credentials → ${path}`)
 note('the wrapped key is useless without the session private key, so it needs no protection of its own')
 
 // ── agent side: a different process, with no access to the payer wallet ─────
-step('Agent unwraps DK with the key it already had')
+step('Agent unwraps KK with the key it already had')
 const agentClient = clientFor(sessionPrivateKey, chain)
-const agentDK = await Keys.unwrapWith(sessionPrivateKey, grant)
-note(`agent DK matches payer DK: ${Keys.hex(agentDK) === Keys.hex(DK)}`)
+const agentKK = await Keys.unwrapWith(sessionPrivateKey, grant)
+note(`agent KK matches payer KK: ${Keys.hex(agentKK) === Keys.hex(KK)}`)
 
 step('Agent derives a fresh piece key and encrypts')
 const salt = Keys.newSalt()
-const meta = Keys.appMetadata({ clientDataSetId, salt })
+const target = Keys.writeTarget(grant, agentKK) // keyspace and scope, from the grant alone
+const meta = Keys.appMetadata({ ...target.ref, scope: target.scope, salt })
 const plaintext = new TextEncoder().encode(
   `agent report, written by ${session.address}. ${'='.repeat(200)}`
 )
-const ciphertext = await encrypt(plaintext, Keys.pieceKey(agentDK, salt), {
+const ciphertext = await encrypt(plaintext, Keys.pieceKey(target.key, salt), {
   algorithm: CoseAlgorithm.CHUNKED_AES_256_GCM_STREAM,
   appMetadata: meta,
 })

@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Keysmith in MetaMask</title>
+    <style>
+      :root {
+        --bg: #fbfaf8;
+        --fg: #1d1d1f;
+        --muted: #6b6b70;
+        --card: #ffffff;
+        --line: #e4e2dd;
+        --accent: #0b6bcb;
+        --prompt: #a35a00;
+        --ok: #1f7a3a;
+        --error: #b3261e;
+        color-scheme: light dark;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #141416;
+          --fg: #ececee;
+          --muted: #9a9aa2;
+          --card: #1d1d20;
+          --line: #2e2e33;
+          --accent: #5aa9ff;
+          --prompt: #ffb35c;
+          --ok: #6fd28f;
+          --error: #ff8a80;
+        }
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, sans-serif; }
+      main { max-width: 760px; margin: 0 auto; padding: 24px 16px 64px; }
+      h1 { font-size: 1.6rem; margin: 0 0 4px; }
+      h2 { font-size: 1rem; margin: 0 0 4px; }
+      p { margin: 0 0 10px; }
+      .lede, .steps p { color: var(--muted); }
+      .steps { list-style: none; counter-reset: step; padding: 0; margin: 20px 0; display: grid; gap: 12px; }
+      .steps li { counter-increment: step; background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+      .steps h2::before { content: counter(step) '. '; color: var(--muted); }
+      button { font: inherit; padding: 6px 14px; border-radius: 8px; border: 1px solid var(--accent); background: var(--accent); color: #fff; cursor: pointer; }
+      button + button { margin-left: 6px; }
+      button:disabled { opacity: 0.4; cursor: default; }
+      textarea { width: 100%; font: inherit; padding: 8px; margin-bottom: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--fg); }
+      details { margin-top: 10px; }
+      pre, #log { font: 12.5px/1.5 ui-monospace, Menlo, monospace; overflow-wrap: anywhere; white-space: pre-wrap; }
+      #who { color: var(--muted); margin-left: 8px; overflow-wrap: anywhere; }
+      #log { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px; min-height: 120px; }
+      #log .prompt { color: var(--prompt); font-weight: 600; }
+      #log .ok { color: var(--ok); }
+      #log .error { color: var(--error); }
+      #log .dim { color: var(--muted); }
+      #log a { color: var(--accent); }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Keysmith in MetaMask</h1>
+      <p class="lede">
+        One wallet signature starts a key hierarchy. Keys exist only in this tab: reload, and step 5 rebuilds
+        them from the wallet and the chain. Every MetaMask prompt is announced in the log, in orange, before it
+        appears.
+      </p>
+
+      <ol class="steps">
+        <li>
+          <h2>Connect</h2>
+          <p>Ask MetaMask for an account, and add or switch to the devnet.</p>
+          <button id="connect">Connect MetaMask</button><span id="who"></span>
+        </li>
+        <li>
+          <h2>Start a keyspace</h2>
+          <p>Mint a random keyspace and sign <code>KeyspaceKey</code>. The signature becomes the root key and is never shown or stored.</p>
+          <button id="keyspace">Start a keyspace</button>
+          <details id="typed-box">
+            <summary>What MetaMask is asked to sign</summary>
+            <pre id="typed">Start a keyspace to see it.</pre>
+          </details>
+        </li>
+        <li>
+          <h2>Create a dataset</h2>
+          <p>Encrypt in the tab, upload ciphertext to the SP, and create a dataset carrying only the keyspace and its commitment.</p>
+          <textarea id="first" rows="2">Q3 invoice: 42 FIL. Written from MetaMask.</textarea>
+          <button id="create">Encrypt and store</button>
+        </li>
+        <li>
+          <h2>Delegate to an agent</h2>
+          <p>Authorise a session key on chain, hand it the <code>agent-memory</code> scope key, and let it write with no further prompts.</p>
+          <p><label><input type="checkbox" id="via-console" checked /> Authorise it in the Filecoin Pay console (<code>localhost:3780</code>), not from this page</label></p>
+          <textarea id="agent" rows="2">Agent memory: the user prefers summaries under 100 words.</textarea>
+          <button id="delegate">Delegate and write</button>
+        </li>
+        <li>
+          <h2>Recover from the wallet</h2>
+          <p>Forget the keys, or reload the page, then rebuild every key from the chain with one signature per keyspace.</p>
+          <button id="forget">Forget keys</button><button id="recover">Recover</button>
+        </li>
+      </ol>
+
+      <p>Keysmith signatures this page load: <b id="count">0</b></p>
+      <h2>Log</h2>
+      <div id="log" scope="log" aria-live="polite"></div>
+    </main>
+    <script type="module" src="./app.mjs"></script>
+  </body>
+</html>

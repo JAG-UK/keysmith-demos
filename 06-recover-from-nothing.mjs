@@ -1,10 +1,12 @@
 /**
- * 6. Recovery from nothing but the wallet.
+ * 6. Recovery from nothing but the wallet — wherever the copies ended up.
  *
- * Delete every local file, every grant, every note. With the payer's wallet and
- * the chain, each dataset key comes back: the chain lists the datasets and
- * their clientDataSetIds, the wallet re-signs, and foc/kc proves the key is the
- * right one before any decryption is attempted.
+ * Delete every local file, every grant, every note. Then walk every dataset
+ * this wallet pays for and open every piece in it. Each piece's envelope names
+ * its keyspace, so the key comes from the envelope, not from the dataset it was
+ * found in: a copy that replication or repair put into some other dataset opens
+ * exactly like the original. One signature per distinct keyspace, however many
+ * datasets it is spread across; foc/kc is checked wherever a dataset recorded it.
  *
  * This demo reads NOTHING from out/state.json.
  */
@@ -12,47 +14,52 @@ import { getAllDataSetMetadata, getClientDataSets } from '@filoz/synapse-core/wa
 import { decrypt, parseEnvelope } from 'foc-encryption'
 import { clientFor, devnet, note, step } from './lib/devnet.mjs'
 import * as Keys from './lib/keys.mjs'
-import * as Trace from './lib/trace.mjs'
 import { getPiece, listPiecesOnChain } from './lib/store.mjs'
+import * as Trace from './lib/trace.mjs'
 
-const { chain, sp, users } = devnet()
+const { sp, users, chain } = devnet()
 const payer = users[0]
 const client = clientFor(payer.private_key_hex, chain)
+
+/**
+ * keyspace → { kk, commitment }: one signature per keyspace, however many datasets it spans.
+ * Signed once, not twice: the dataset's commitment checks the key instead.
+ */
+const keyspaces = new Map()
+async function keysFor(keyspace, recorded) {
+  if (!keyspaces.has(keyspace)) {
+    note(`  signing for keyspace ${keyspace} — the only prompt it will ever cost this run`)
+    keyspaces.set(keyspace, await Keys.keyspaceKeys(client.account, { owner: payer.evm_addr, keyspace }, { commitment: recorded }))
+  }
+  return keyspaces.get(keyspace)
+}
 
 step('Ask the chain what this wallet pays for')
 const page = await getClientDataSets(client, { address: payer.evm_addr })
 note(`${page.items.length} dataset(s) for ${payer.evm_addr}`)
 
-for (const info of page.items) {
-  const { dataSetId, clientDataSetId } = info
-  step(`Dataset ${dataSetId} — clientDataSetId ${clientDataSetId}`)
-
+for (const { dataSetId } of page.items) {
+  step(`Dataset ${dataSetId}`)
   const metadata = await getAllDataSetMetadata(client, { dataSetId: BigInt(dataSetId) })
-  const kc = metadata['foc/kc']
-  if (kc == null) {
-    note('no foc/kc — not an encrypted dataset, skipping')
-    continue
+  const recorded = metadata['foc/ks']
+  note(recorded ? `records keyspace ${recorded}` : 'records no keyspace — pieces will say for themselves')
+
+  if (recorded && metadata['foc/kc']) {
+    // Checked before signing, so a dataset from a pre-release format costs no prompt.
+    if (!/^v1\.[0-9a-f]{32}$/.test(metadata['foc/kc'])) {
+      note(`a pre-release commitment (${metadata['foc/kc'].slice(0, 8)}…); skipping this dataset`)
+      continue
+    }
+    try {
+      await keysFor(recorded, metadata['foc/kc'])
+    } catch (err) {
+      note(`foc/kc MISMATCH — ${err.message}. Stopping loudly, not decrypting garbage.`)
+      continue
+    }
+    note('foc/kc matches: the right key, before a single byte is decrypted')
   }
 
-  note('re-signing DatasetKey from the wallet alone')
-  const { dk: DK, commitment: recomputed } = await Keys.datasetKeys(client.account, {
-    chainId: chain.id,
-    service: chain.contracts.fwss.address,
-    payer: payer.evm_addr,
-    clientDataSetId: BigInt(clientDataSetId),
-  })
-
-  note(`foc/kc on chain   ${kc}`)
-  note(`foc/kc recomputed ${recomputed}`)
-  if (recomputed !== kc) {
-    note('MISMATCH — wrong wallet or a non-deterministic signer. Stopping loudly, not decrypting garbage.')
-    continue
-  }
-  note('match: this is the right key, before a single byte is decrypted')
-
-  const pieces = await listPiecesOnChain(client, dataSetId)
-  note(`${pieces.length} live piece(s), listed from PDPVerifier`)
-  for (const piece of pieces) {
+  for (const piece of await listPiecesOnChain(client, dataSetId)) {
     const blob = await getPiece(sp.serviceURL, piece.pieceCid)
     Trace.envelope(blob, `piece ${piece.pieceId}`)
     let appMetadata
@@ -62,10 +69,18 @@ for (const info of page.items) {
       note(`  piece ${piece.pieceId} — not a FEE envelope (plaintext piece), skipping`)
       continue
     }
-    const scope = appMetadata['foc/scope'] ?? '/'
-    const text = new TextDecoder().decode(await decrypt(blob, Keys.keyForEnvelope(DK, appMetadata)))
-    note(`  piece ${piece.pieceId} [${scope}] → "${text.slice(0, 44)}…"`)
+    if (appMetadata['foc/v'] !== 1 || !appMetadata['foc/ks']) {
+      note(`  piece ${piece.pieceId} — a pre-release envelope (foc/v ${appMetadata['foc/v']}); skipping`)
+      continue
+    }
+    const keyspace = appMetadata['foc/ks']
+    const where = keyspace === recorded ? '' : `  ← written under keyspace ${keyspace.slice(0, 10)}…, found here`
+    const { kk } = await keysFor(keyspace)
+    const scope = appMetadata['foc/scope'] ?? '(no scope)'
+    const text = new TextDecoder().decode(await decrypt(blob, Keys.keyForEnvelope(kk, appMetadata)))
+    note(`  piece ${piece.pieceId} [${scope}] → "${text.slice(0, 40)}…"${where}`)
   }
 }
 
-console.log('\nNo keystore, no backup file, no service. A wallet and a public chain were enough.')
+console.log(`\n${keyspaces.size} keyspace(s), ${keyspaces.size} signature(s). No keystore, no backup file, no service.`)
+console.log('The envelope names the keyspace, so it did not matter which dataset a copy was found in.')

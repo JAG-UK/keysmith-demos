@@ -7,12 +7,29 @@
   "engines": {
     "node": ">=22"
   },
+  "scripts": {
+    "web": "vite --strictPort",
+    "app": "vite --config vite.app.config.mjs --strictPort",
+    "app:build": "vite build --config vite.app.config.mjs",
+    "app:check": "tsc -p app --noEmit"
+  },
   "dependencies": {
     "@filoz/synapse-core": "^0.9.1",
     "@filoz/synapse-sdk": "^2.0.0",
+    "@tanstack/react-query": "^5.104.3",
     "cborg": "^5.1.11",
-    "foc-encryption": "file:../foc-encryption-demo/packages/foc-encryption",
+    "foc-encryption": "file:./vendor/foc-encryption",
     "multiformats": "14.0.5",
-    "viem": "^2.21.0"
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "viem": "^2.21.0",
+    "wagmi": "^3.7.7"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.2"
   }
 }

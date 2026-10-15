@@ -1,0 +1,1 @@
+{"version":3,"file":"headers.d.ts","sourceRoot":"","sources":["../../src/cose/headers.ts"],"names":[],"mappings":"AAAA,eAAO,MAAM,aAAa;;;CAGhB,CAAA;AAEV,eAAO,MAAM,eAAe;;;;CAIlB,CAAA;AAGV,eAAO,MAAM,eAAe,IAAI,CAAA;AAChC,eAAO,MAAM,eAAe,IAAI,CAAA;AAChC,eAAO,MAAM,cAAc,IAAI,CAAA;AAC/B,eAAO,MAAM,eAAe,KAAK,CAAA;AAEjC,eAAO,MAAM,iBAAiB,sCAAsC,CAAA"}

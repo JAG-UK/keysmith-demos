@@ -14,6 +14,7 @@ import { formatUnits, http, parseUnits } from 'viem'
 import { clientFor, devnet, note, save, step } from './lib/devnet.mjs'
 import * as Keys from './lib/keys.mjs'
 import * as Trace from './lib/trace.mjs'
+import { getDataSet } from '@filoz/synapse-core/warm-storage'
 import { createDataSetWithPiece, putPiece } from './lib/store.mjs'
 
 const { chain, sp, users, runId } = devnet()
@@ -25,31 +26,28 @@ const plaintext = new TextEncoder().encode(
 
 console.log(`devnet ${runId} · payer ${payer.evm_addr} · SP ${sp.serviceURL}`)
 
-step('Pick clientDataSetId (client-chosen, before the dataset exists)')
-const clientDataSetId = Keys.newClientDataSetId()
-note(`clientDataSetId = ${clientDataSetId}`)
+step('Mint a keyspace — the only identifier the keys depend on')
+const keyspace = Keys.newKeyspace()
+note(`keyspace = ${keyspace}   names the keys, travels in every envelope`)
 
-step('Sign DatasetKey once — twice, and compare (D3a)')
+step('Sign KeyspaceKey once — twice, and compare (D3a)')
 const ref = {
-  chainId: chain.id,
-  service: chain.contracts.fwss.address,
-  payer: payer.evm_addr,
-  clientDataSetId,
-  epoch: 0, // the rotation slot: bump it to re-key this dataset in place
+  owner: payer.evm_addr,
+  keyspace,
 }
-const message = Keys.datasetKeyMessage(ref)
-// purpose is not a parameter — it is a fixed domain separator. If callers could
-// choose it, two apps would derive different keys for the same dataset.
+const message = Keys.keyspaceKeyMessage(ref)
+// Two fields and nothing else: the EIP-712 domain and type already set this
+// message apart from anything else a wallet signs.
 note(`signing ${Object.keys(message).length} fields: ${Object.keys(message).join(', ')}`)
 // The signature never comes back: only the key and the public commitment do.
-const { dk: DK, commitment: kc } = await Keys.datasetKeys(client.account, ref)
-note(`signature is deterministic; DK = ${Keys.hex(DK).slice(0, 18)}…`)
+const { kk: KK, commitment: kc } = await Keys.keyspaceKeys(client.account, ref)
+note(`signature is deterministic; KK = ${Keys.hex(KK).slice(0, 18)}…`)
 note(`foc/kc = ${kc}   (non-secret commitment, D3b)`)
 
 step('Derive a key for this piece, and encrypt with FEE')
 const salt = Keys.newSalt()
-const meta = Keys.appMetadata({ clientDataSetId, salt })
-const ciphertext = await encrypt(plaintext, Keys.pieceKey(DK, salt), {
+const meta = Keys.appMetadata({ ...ref, salt })
+const ciphertext = await encrypt(plaintext, Keys.pieceKey(KK, salt), {
   algorithm: CoseAlgorithm.CHUNKED_AES_256_GCM_STREAM,
   appMetadata: meta,
 })
@@ -83,15 +81,19 @@ step('createDataSet + addPieces, carrying foc/kc in metadata')
 const result = await createDataSetWithPiece(client, {
   serviceURL: sp.serviceURL,
   payee: sp.payee,
-  clientDataSetId,
-  metadata: { 'foc/kc': kc },
+  metadata: { 'foc/ks': keyspace, 'foc/kc': kc },
   pieceCid,
 })
 note(`dataSetId ${result.dataSetId} · tx ${result.confirmedTxHash ?? result.createMessageHash}`)
 note('piece confirmed live on PDPVerifier')
+// synapse-core picked FWSS's clientDataSetId itself. Read it back only because
+// later addPieces calls must sign over it — no key depends on it.
+const { clientDataSetId } = await getDataSet(client, { dataSetId: result.dataSetId })
+note(`FWSS clientDataSetId ${clientDataSetId} (chosen by synapse-core, needed only by addPieces)`)
 
 save({
   clientDataSetId: clientDataSetId.toString(),
+  keyspace,
   dataSetId: result.dataSetId.toString(),
   payer: payer.evm_addr,
   kc,
