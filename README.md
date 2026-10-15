@@ -76,7 +76,7 @@ What a first-time wallet is asked for:
 | --- | --- |
 | Connect | connect; add and switch to the devnet network |
 | Start a keyspace | 2 identical signatures the first time this browser sees the wallet, then 1 |
-| Create a dataset | first time only: USDFC allowance, deposit, approve Warm Storage (3 transactions); then 1 signature, which the SP submits |
+| Create a dataset | first time only: USDFC allowance, deposit, approve Warm Storage (3 transactions); then 2 signatures (create dataset, add pieces), which the SP submits |
 | Delegate to an agent | in the Filecoin Pay console: connect, approve the key, 1 transaction; the agent's own write costs none |
 | Recover | 1 signature per keyspace |
 

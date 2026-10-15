@@ -1,16 +1,21 @@
 import { useState } from 'react'
 import { useConnection } from 'wagmi'
+import { ActivityLog, ActivityProvider } from './activity.tsx'
 import { Header } from './components/Header.tsx'
+import { OwnerPanel } from './components/OwnerPanel.tsx'
 import { Notice, Panel, Placeholder } from './components/Panel.tsx'
 import type { Network } from './networks.ts'
+import { OwnerProvider } from './owner-context.tsx'
 
 export function App(props: { networks: Network[] }) {
-  const { chainId, isConnected } = useConnection()
+  const { address, chainId, isConnected } = useConnection()
   const [preferred, setPreferred] = useState(props.networks[0])
   // Connected, the wallet's chain decides; otherwise the visitor's pick.
   const network = isConnected ? props.networks.find((each) => each.chain.id === chainId) : preferred
 
   return (
+    <ActivityProvider>
+    <OwnerProvider key={`${chainId}:${address}`} network={network}>
     <div className="page">
       <Header networks={props.networks} network={network} onPick={setPreferred} />
       {isConnected && !network ? (
@@ -20,17 +25,16 @@ export function App(props: { networks: Network[] }) {
 
       <main className="grid">
         <Panel step={1} area="owner" title="Owner" lede="Start a keyspace with your wallet, create a dataset, and get your keys back from the chain alone.">
-          <Placeholder phase={2}>
-            Mint a keyspace and sign once (twice the first time, to prove your wallet signs deterministically). Then encrypt a
-            first piece and create a dataset recording the keyspace and its commitment. Reload, and one signature rebuilds
-            every key.
-          </Placeholder>
+          <OwnerPanel />
         </Panel>
         <Panel step={2} area="agents" title="Session keys" lede="Agents that write for you without your wallet, each with only the keys its job needs.">
           <Placeholder phase={3}>
             Authorise agents in SessionKeyRegistry, the way the Filecoin Pay console does, then share grants: everyone gets the{' '}
             <code>shared</code> scope, and each agent a private <code>agents/&lt;name&gt;</code> scope of its own.
           </Placeholder>
+        </Panel>
+        <Panel area="activity" title="Activity" lede="Every wallet prompt is announced here before it appears.">
+          <ActivityLog />
         </Panel>
         <Panel step={3} area="matrix" title="Who can read what" lede="Every cell is a real decryption attempt, on the real ciphertext.">
           <Placeholder phase={3}>
@@ -50,5 +54,7 @@ export function App(props: { networks: Network[] }) {
         anything of value.
       </footer>
     </div>
+    </OwnerProvider>
+    </ActivityProvider>
   )
 }

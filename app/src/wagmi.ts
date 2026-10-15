@@ -11,6 +11,6 @@ export function makeConfig(networks: Network[]) {
   return createConfig({
     chains: [first, ...rest],
     connectors: [injected()],
-    transports: Object.fromEntries(networks.map((network) => [network.chain.id, http(network.rpc)])),
+    transports: Object.fromEntries(networks.map((network) => [network.chain.id, http(network.readChain.rpcUrls.default.http[0])])),
   })
 }

@@ -1,14 +1,22 @@
 import { calibration, type FilecoinChain, mainnet } from '@filoz/synapse-core/chains'
 import { toChain } from '@filoz/synapse-core/devnet'
+import type { Address } from 'viem'
 
 export type NetworkId = 'devnet' | 'calibration' | 'mainnet'
 
 export interface Network {
   id: NetworkId
   label: string
+  /** What the wallet is given: its RPC is the node's real address. */
   chain: FilecoinChain
-  /** Where the page reads from. Devnet goes through the dev server, because Lotus sends no CORS headers. */
-  rpc: string
+  /**
+   * What the page reads with, and hands to library code that builds its own
+   * read clients. On devnet its RPC is the dev server's proxy, because Lotus
+   * sends no CORS headers.
+   */
+  readChain: FilecoinChain
+  /** The storage provider pieces go to. Calibration and mainnet pick one in phase 5. */
+  sp?: { serviceURL: string; payee: Address }
   note: string
 }
 
@@ -18,11 +26,15 @@ export async function loadNetworks(): Promise<Network[]> {
   const response = await fetch('/devnet.json').catch(() => null)
   if (response?.ok) {
     const devnet = await response.json()
+    const chain = toChain(devnet)
+    const proxied = { http: [`${location.origin}/rpc/v1`] }
+    const [sp] = devnet.info.pdp_sps
     networks.push({
       id: 'devnet',
       label: 'Devnet',
-      chain: toChain(devnet),
-      rpc: `${location.origin}/rpc/v1`,
+      chain,
+      readChain: { ...chain, rpcUrls: { default: proxied, public: proxied } },
+      sp: { serviceURL: sp.pdp_service_url, payee: sp.eth_addr },
       note: `foc-devnet run ${devnet.info.run_id}. Import a devnet user's key into your wallet to fund it.`,
     })
   }
@@ -31,14 +43,14 @@ export async function loadNetworks(): Promise<Network[]> {
       id: 'calibration',
       label: 'Calibration',
       chain: calibration,
-      rpc: calibration.rpcUrls.default.http[0],
+      readChain: calibration,
       note: 'Filecoin testnet. Needs tFIL for gas and USDFC for storage, both from faucets.',
     },
     {
       id: 'mainnet',
       label: 'Mainnet',
       chain: mainnet,
-      rpc: mainnet.rpcUrls.default.http[0],
+      readChain: mainnet,
       note: 'Real FIL and USDFC. Everything here costs money.',
     }
   )
