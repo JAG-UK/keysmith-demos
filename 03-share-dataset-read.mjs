@@ -5,7 +5,7 @@
  * no piece is rewritten, and the recipient reads every piece in the dataset —
  * including the one the agent wrote in demo 2, and any piece written later.
  */
-import { decrypt, parseEnvelope } from 'foc-encryption'
+import { decryptBytes, readEnvelope } from './lib/fee.mjs'
 import { clientFor, devnet, load, need, note, readBytes, save, step, writeBytes } from './lib/devnet.mjs'
 import * as Keys from './lib/keys.mjs'
 import * as Trace from './lib/trace.mjs'
@@ -41,9 +41,9 @@ step('Recipient reads every piece, deriving each piece key from the envelope')
 for (const [name, cid] of Object.entries(state.pieces)) {
   const blob = await getPiece(sp.serviceURL, cid)
   Trace.envelope(blob, `piece: ${name}`)
-  const { appMetadata } = parseEnvelope(blob)
+  const { appMetadata } = await readEnvelope(blob)
   const key = Keys.keyForEnvelope(recipientKK, appMetadata)
-  const plaintext = new TextDecoder().decode(await decrypt(blob, key))
+  const plaintext = new TextDecoder().decode(await decryptBytes(blob, key))
   note(`${name} (${cid.slice(0, 20)}…) → "${plaintext.slice(0, 48)}…"`)
 }
 

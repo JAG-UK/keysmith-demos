@@ -10,7 +10,7 @@ They exist to show a maintainer **where the layering cuts**:
 | Layer | Who | In these demos |
 | --- | --- | --- |
 | key source | **Keysmith, proposed** | [`lib/keys.mjs`](lib/keys.mjs) — `node:crypto` and `cborg` only |
-| envelope | FEE | [`vendor/foc-encryption`](vendor/foc-encryption) — takes a key and bytes, knows nothing else |
+| envelope | FEE | [`filecoin-encryption-envelope`](https://www.npmjs.com/package/filecoin-encryption-envelope) 0.1.0, via [`lib/fee.mjs`](lib/fee.mjs) — takes a key and bytes, knows nothing else |
 | storage | Synapse / FWSS / Curio | [`lib/store.mjs`](lib/store.mjs) — moves opaque bytes |
 
 The library these demos argue for is proposed as `@filoz/keysmith` in
@@ -27,9 +27,10 @@ pinned test vectors when a synapse-sdk checkout is alongside.
    `cargo run -- start` (~8 min, needs Docker). The demos read
    `~/.foc-devnet/state/latest/devnet-info.json`, or `$DEVNET_INFO_PATH`.
 
-FEE needs no setup: it is not published yet, so a copy lives in
-[`vendor/foc-encryption`](vendor/foc-encryption), from
-`Kubuxu/foc-encryption-demo` at `6d9f575` (see its `VENDORED.md`).
+FEE needs no setup: it is the published
+[`filecoin-encryption-envelope`](https://www.npmjs.com/package/filecoin-encryption-envelope)
+0.1.0, installed with everything else. FEE is streaming;
+[`lib/fee.mjs`](lib/fee.mjs) runs whole pieces through it so the demos read as steps.
 
 ## Run
 
@@ -183,13 +184,11 @@ key from the wrong scope key and GCM rejects it, with both keys on screen.
 
 ## Honest notes
 
-- **The FEE library here is `foc-encryption` (Kubuxu/Peeja @6d9f575, vendored), not
-  [synapse-sdk#967](https://github.com/FilOzone/synapse-sdk/pull/967).** #967 currently
-  contains constants, nonce and chunk-layout only — no `encrypt`/`decrypt`/`wrapKey` yet.
-  The demos use the same COSE wire format and should port when #967 lands. One difference
-  matters: #967 puts `app_metadata` in the **protected** header; `foc-encryption` leaves it
-  unprotected. Nothing here depends on it, because a tampered `foc/salt` yields a wrong key
-  and a loud AEAD failure.
+- **FEE is `filecoin-encryption-envelope` 0.1.0**, the published package. Every header,
+  Keysmith's `app_metadata` labels included, is in the **protected** header, so the content
+  tags authenticate the labels: a tampered `foc/scope` or `foc/salt` fails loudly. FEE hands
+  the labels to a key resolver before they are authenticated, which is why Keysmith checks
+  them as strictly as any input.
 - **The scope label travels in `app_metadata` in clear** — a reader needs it to derive.
   The bytes stay secret, the label does not; for access labels that leaks classification,
   so prefer opaque scope ids with display names held by the app.

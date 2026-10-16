@@ -13,7 +13,6 @@ import * as SessionKey from '@filoz/synapse-core/session-key'
 import { toChain } from '@filoz/synapse-core/devnet'
 import { getAllDataSetMetadata, getClientDataSets, getDataSet } from '@filoz/synapse-core/warm-storage'
 import { Synapse } from '@filoz/synapse-sdk'
-import { CoseAlgorithm, decrypt, encrypt, parseEnvelope } from 'foc-encryption'
 import {
   createClient,
   custom,
@@ -26,6 +25,7 @@ import {
   walletActions,
 } from 'viem'
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
+import { decryptBytes, encryptBytes, readEnvelope } from '../lib/fee.mjs'
 import { addPiece, createDataSetWithPiece, getPiece, listPiecesOnChain, putPiece } from '../lib/store.mjs'
 
 const devnet = await (await fetch('/devnet.json')).json()
@@ -40,7 +40,6 @@ const reader = createClient({ chain, transport: http() }).extend(publicActions)
 const SCOPE = 'agent-memory'
 /** The Filecoin Pay console, run locally against the devnet (see README). */
 const CONSOLE = 'http://localhost:3780'
-const ALGORITHM = CoseAlgorithm.CHUNKED_AES_256_GCM_STREAM
 const $ = (id) => document.getElementById(id)
 const utf8 = (text) => new TextEncoder().encode(text)
 const short = (hex) => `${hex.slice(0, 10)}…`
@@ -161,10 +160,11 @@ on('create', async () => {
   // The owner writes the way a delegate does: the keyspace comes from what was signed.
   const target = Keysmith.writeTarget(descriptor, kk)
   const salt = Keysmith.newSalt()
-  const ciphertext = await encrypt(utf8($('first').value), Keysmith.pieceKey(target.key, salt), {
-    algorithm: ALGORITHM,
-    appMetadata: Keysmith.pieceMetadata(target.ref, { salt, scope: target.scope }),
-  })
+  const ciphertext = await encryptBytes(
+    utf8($('first').value),
+    Keysmith.pieceKey(target.key, salt),
+    Keysmith.pieceMetadata(target.ref, { salt, scope: target.scope })
+  )
   log(`Encrypted in the tab: ${ciphertext.length} B envelope. No prompt.`)
 
   await fund()
@@ -233,10 +233,11 @@ on('delegate', async () => {
   // The agent's side: it holds its own key and the grant, never the wallet.
   const target = Keysmith.writeTarget(grant, await Keysmith.unwrapWith(sessionPrivateKey, grant))
   const salt = Keysmith.newSalt()
-  const ciphertext = await encrypt(utf8($('agent').value), Keysmith.pieceKey(target.key, salt), {
-    algorithm: ALGORITHM,
-    appMetadata: Keysmith.pieceMetadata(target.ref, { salt, scope: target.scope }),
-  })
+  const ciphertext = await encryptBytes(
+    utf8($('agent').value),
+    Keysmith.pieceKey(target.key, salt),
+    Keysmith.pieceMetadata(target.ref, { salt, scope: target.scope })
+  )
   const agent = createClient({ chain, transport: http(), account: session }).extend(publicActions)
   log('Uploading to the SP, and waiting until it has stored the piece. No prompt; this can take a minute.', 'dim')
   const pieceCid = await putPiece(sp.serviceURL, ciphertext)
@@ -314,17 +315,18 @@ on('recover', async () => {
       const blob = await getPiece(sp.serviceURL, piece.pieceCid)
       let appMetadata
       try {
-        ;({ appMetadata } = parseEnvelope(blob))
+        ;({ appMetadata } = await readEnvelope(blob))
       } catch {
         log(`Dataset ${dataSetId} · piece ${piece.pieceId}: not encrypted, skipped.`, 'dim')
         continue
       }
-      if (appMetadata['foc/v'] !== 1 || !appMetadata['foc/ks']) {
-        log(`Dataset ${dataSetId} · piece ${piece.pieceId}: a pre-release envelope (foc/v ${appMetadata['foc/v']}), skipped.`, 'dim')
+      if (appMetadata?.['foc/v'] !== 1 || !appMetadata['foc/ks']) {
+        log(`Dataset ${dataSetId} · piece ${piece.pieceId}: not a Keysmith envelope (foc/v ${appMetadata?.['foc/v']}), skipped.`, 'dim')
         continue
       }
       const { kk } = await keysFor(appMetadata['foc/ks'])
-      const text = new TextDecoder().decode(await decrypt(blob, Keysmith.keyForEnvelope(kk, appMetadata)))
+      // FEE reads the envelope, then asks Keysmith for the key.
+      const text = new TextDecoder().decode(await decryptBytes(blob, Keysmith.keyResolver(kk)))
       log(`Dataset ${dataSetId} · piece ${piece.pieceId} [${appMetadata['foc/scope'] ?? 'no scope'}]: "${text}"`, 'ok')
     }
   }

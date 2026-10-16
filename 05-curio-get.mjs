@@ -7,7 +7,7 @@
  * ciphertext to anyone, and being "patched" buys an attacker bandwidth only.
  */
 import { randomBytes } from 'node:crypto'
-import { decrypt, parseEnvelope } from 'foc-encryption'
+import { decryptBytes, readEnvelope } from './lib/fee.mjs'
 import { devnet, load, need, note, readBytes, step } from './lib/devnet.mjs'
 import * as Keys from './lib/keys.mjs'
 import * as Trace from './lib/trace.mjs'
@@ -26,14 +26,14 @@ note(`${res.status} ${res.statusText} · ${blob.length} B · content-type ${res.
 
 step('Anyone can read the envelope; nobody can read the content')
 Trace.envelope(blob, 'exactly what the SP served')
-const envelope = parseEnvelope(blob)
-note(`algorithm ${envelope.algorithm} · seekable ${envelope.seekable} · chunks ${envelope.chunkCount}`)
+const envelope = await readEnvelope(blob)
+note(`scheme ${envelope.scheme} · ${envelope.headerLength} B envelope · chunks ${envelope.chunkCount} of ${envelope.chunkSize} B`)
 note(`app_metadata ${JSON.stringify(envelope.appMetadata)}`)
 note(`recipients in object: ${envelope.recipients.length} (sharing happens off-chain, not in the piece)`)
 
 step('Without the key, that is where it ends')
 try {
-  await decrypt(blob, randomBytes(32))
+  await decryptBytes(blob, new Uint8Array(randomBytes(32)))
   console.error('    UNEXPECTED: decrypt succeeded')
 } catch (err) {
   note(`decrypt with a wrong key → ${err.constructor.name}`)
@@ -42,7 +42,7 @@ try {
 step('With the grant from demo 3, the same bytes open')
 const KK = await Keys.unwrapWith(users[1].private_key_hex, readBytes('grant-dataset.cbor'))
 const key = Keys.keyForEnvelope(KK, envelope.appMetadata)
-const text = new TextDecoder().decode(await decrypt(blob, key))
+const text = new TextDecoder().decode(await decryptBytes(blob, key))
 note(`plaintext: "${text.slice(0, 60)}…"`)
 
 console.log('\nThe retrieval path never changed. Curio, gateways and CDNs stay exactly as they are.')

@@ -10,7 +10,7 @@
  *   crypto  — the wrapped KK says this signer may read and write this dataset
  */
 import * as SessionKey from '@filoz/synapse-core/session-key'
-import { CoseAlgorithm, encrypt } from 'foc-encryption'
+import { encryptBytes } from './lib/fee.mjs'
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
 import { clientFor, devnet, load, need, note, onDevnet, save, step, writeJson } from './lib/devnet.mjs'
 import * as Keys from './lib/keys.mjs'
@@ -67,10 +67,7 @@ const meta = Keys.appMetadata({ ...target.ref, scope: target.scope, salt })
 const plaintext = new TextEncoder().encode(
   `agent report, written by ${session.address}. ${'='.repeat(200)}`
 )
-const ciphertext = await encrypt(plaintext, Keys.pieceKey(target.key, salt), {
-  algorithm: CoseAlgorithm.CHUNKED_AES_256_GCM_STREAM,
-  appMetadata: meta,
-})
+const ciphertext = await encryptBytes(plaintext, Keys.pieceKey(target.key, salt), meta)
 Trace.envelope(ciphertext, 'agent-written piece')
 note(`envelope ${ciphertext.length} B`)
 

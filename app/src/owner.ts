@@ -7,7 +7,6 @@
 import * as Keysmith from '@filoz/keysmith'
 import { getAllDataSetMetadata, getClientDataSets, getDataSet } from '@filoz/synapse-core/warm-storage'
 import { Synapse } from '@filoz/synapse-sdk'
-import { CoseAlgorithm, decrypt, encrypt, parseEnvelope } from 'foc-encryption'
 import {
   type Address,
   createClient,
@@ -20,12 +19,11 @@ import {
   publicActions,
   walletActions,
 } from 'viem'
+import { decryptBytes, encryptBytes, readEnvelope } from '../../lib/fee.mjs'
 import { createDataSetWithPiece, getPiece, listPiecesOnChain, pieceUrl, putPiece } from '../../lib/store.mjs'
 import type { Activity } from './activity.tsx'
 import type { Keyring } from './keyring.ts'
 import type { Network } from './networks.ts'
-
-export const ALGORITHM = CoseAlgorithm.CHUNKED_AES_256_GCM_STREAM
 
 export interface OwnerEnv {
   network: Network
@@ -75,10 +73,7 @@ export async function createDataset(env: OwnerEnv, keyspace: Hex, text: string, 
   // The owner writes the way a delegate does: the keyspace comes from what was signed.
   const target = Keysmith.writeTarget(descriptor, kk)
   const salt = Keysmith.newSalt()
-  const ciphertext = await encrypt(utf8(text), Keysmith.pieceKey(target.key, salt), {
-    algorithm: ALGORITHM,
-    appMetadata: { ...Keysmith.pieceMetadata(target.ref, { salt, scope: target.scope }) },
-  })
+  const ciphertext = await encryptBytes(utf8(text), Keysmith.pieceKey(target.key, salt), Keysmith.pieceMetadata(target.ref, { salt, scope: target.scope }))
   step('encrypt', { status: 'done', detail: `${ciphertext.length} B envelope, no prompt` })
 
   step('fund', { status: 'active' })
@@ -195,14 +190,15 @@ async function openPiece(env: OwnerEnv, serviceURL: string, id: bigint, cid: str
   const blob = await getPiece(serviceURL, cid)
   let appMetadata: Record<string, unknown> | undefined
   try {
-    ;({ appMetadata } = parseEnvelope(blob))
+    ;({ appMetadata } = await readEnvelope(blob))
   } catch {
-    return { id, cid, url, note: 'not encrypted' }
+    return { id, cid, url, note: 'not a FEE 0.1 piece: plaintext, or an older envelope format' }
   }
   if (!appMetadata) return { id, cid, url, note: 'encrypted, but not by Keysmith' }
   const metadata = appMetadata as unknown as Keysmith.PieceMetadata
   if (metadata['foc/v'] !== 1 || !metadata['foc/ks']) return { id, cid, url, note: 'pre-release envelope' }
   const { kk } = await env.keyring.keysFor(metadata['foc/ks'])
-  const text = new TextDecoder().decode(await decrypt(blob, Keysmith.keyForEnvelope(kk, metadata)))
+  // FEE reads the envelope, then asks Keysmith for the key.
+  const text = new TextDecoder().decode(await decryptBytes(blob, Keysmith.keyResolver(kk)))
   return { id, cid, url, scope: metadata['foc/scope'], text }
 }

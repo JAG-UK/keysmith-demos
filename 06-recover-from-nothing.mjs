@@ -11,7 +11,7 @@
  * This demo reads NOTHING from out/state.json.
  */
 import { getAllDataSetMetadata, getClientDataSets } from '@filoz/synapse-core/warm-storage'
-import { decrypt, parseEnvelope } from 'foc-encryption'
+import { decryptBytes, readEnvelope } from './lib/fee.mjs'
 import { clientFor, devnet, note, step } from './lib/devnet.mjs'
 import * as Keys from './lib/keys.mjs'
 import { getPiece, listPiecesOnChain } from './lib/store.mjs'
@@ -64,20 +64,20 @@ for (const { dataSetId } of page.items) {
     Trace.envelope(blob, `piece ${piece.pieceId}`)
     let appMetadata
     try {
-      ;({ appMetadata } = parseEnvelope(blob))
+      ;({ appMetadata } = await readEnvelope(blob))
     } catch {
       note(`  piece ${piece.pieceId} — not a FEE envelope (plaintext piece), skipping`)
       continue
     }
-    if (appMetadata['foc/v'] !== 1 || !appMetadata['foc/ks']) {
-      note(`  piece ${piece.pieceId} — a pre-release envelope (foc/v ${appMetadata['foc/v']}); skipping`)
+    if (appMetadata?.['foc/v'] !== 1 || !appMetadata['foc/ks']) {
+      note(`  piece ${piece.pieceId} — not a Keysmith envelope (foc/v ${appMetadata?.['foc/v']}); skipping`)
       continue
     }
     const keyspace = appMetadata['foc/ks']
     const where = keyspace === recorded ? '' : `  ← written under keyspace ${keyspace.slice(0, 10)}…, found here`
     const { kk } = await keysFor(keyspace)
     const scope = appMetadata['foc/scope'] ?? '(no scope)'
-    const text = new TextDecoder().decode(await decrypt(blob, Keys.keyForEnvelope(kk, appMetadata)))
+    const text = new TextDecoder().decode(await decryptBytes(blob, Keys.keyForEnvelope(kk, appMetadata)))
     note(`  piece ${piece.pieceId} [${scope}] → "${text.slice(0, 40)}…"${where}`)
   }
 }

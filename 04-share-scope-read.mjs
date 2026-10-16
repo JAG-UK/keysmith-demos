@@ -14,7 +14,7 @@
  * A piece grant is narrower still: one piece's key, named by the piece's salt.
  * It opens that piece and nothing else, and it can never be used to write.
  */
-import { CoseAlgorithm, decrypt, encrypt, parseEnvelope } from 'foc-encryption'
+import { decryptBytes, encryptBytes, readEnvelope } from './lib/fee.mjs'
 import { clientFor, devnet, load, need, note, readBytes, save, step, writeBytes } from './lib/devnet.mjs'
 import * as Keys from './lib/keys.mjs'
 import * as Trace from './lib/trace.mjs'
@@ -44,10 +44,7 @@ for (const [scope, node] of Object.entries(scopes)) {
   const meta = Keys.appMetadata({ owner: payer.evm_addr, keyspace, scope, salt })
   envelopes[scope] = meta
   const body = new TextEncoder().encode(`${scope}: notes for 2026-09. ${'#'.repeat(200)}`)
-  const ciphertext = await encrypt(body, Keys.pieceKey(node, salt), {
-    algorithm: CoseAlgorithm.CHUNKED_AES_256_GCM_STREAM,
-    appMetadata: meta,
-  })
+  const ciphertext = await encryptBytes(body, Keys.pieceKey(node, salt), meta)
   const pieceCid = await putPiece(sp.serviceURL, ciphertext)
   const added = await addPiece(payerClient, {
     serviceURL: sp.serviceURL,
@@ -73,10 +70,10 @@ const RK = await Keys.unwrapWith(agent.private_key_hex, readBytes('grant-scope-a
 for (const [scope, cid] of Object.entries(written)) {
   const blob = await getPiece(sp.serviceURL, cid)
   Trace.envelope(blob, `piece labelled ${scope}`)
-  const { appMetadata } = parseEnvelope(blob)
+  const { appMetadata } = await readEnvelope(blob)
   try {
     const key = Keys.keyForEnvelope(RK, appMetadata, Keys.holdingOf(grant))
-    const text = new TextDecoder().decode(await decrypt(blob, key))
+    const text = new TextDecoder().decode(await decryptBytes(blob, key))
     note(`${scope}: readable → "${text.slice(0, 40)}…"`)
   } catch (err) {
     note(`${scope}: NOT readable → ${err.constructor.name} (${appMetadata['foc/scope']} needs its own scope key)`)
@@ -108,10 +105,10 @@ const tryOrder = [delivered.pieceCid, ...Object.values(written).filter((cid) => 
 for (const cid of tryOrder) {
   const scope = Object.keys(written).find((r) => written[r] === cid)
   const blob = await getPiece(sp.serviceURL, cid)
-  const { appMetadata } = parseEnvelope(blob)
+  const { appMetadata } = await readEnvelope(blob)
   try {
     const key = Keys.keyForEnvelope(auditorKey, appMetadata, Keys.holdingOf(delivered))
-    const text = new TextDecoder().decode(await decrypt(blob, key))
+    const text = new TextDecoder().decode(await decryptBytes(blob, key))
     note(`${scope} piece: readable → "${text.slice(0, 40)}…"`)
   } catch (err) {
     note(`${scope} piece: NOT readable → ${err.message}`)

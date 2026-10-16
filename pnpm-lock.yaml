@@ -20,9 +20,9 @@ importers:
       cborg:
         specifier: ^5.1.11
         version: 5.1.11
-      foc-encryption:
-        specifier: file:./vendor/foc-encryption
-        version: file:vendor/foc-encryption
+      filecoin-encryption-envelope:
+        specifier: 0.1.0
+        version: 0.1.0
       multiformats:
         specifier: 14.0.5
         version: 14.0.5
@@ -438,6 +438,10 @@ packages:
     resolution: {integrity: sha512-oc6Pzg/gkTobxHZNgMmny+G99dOeBMbAmnGHcZWMKtolxZBIVwfi0Pj0khxEtNU8HMFdbT5sK0HmtgecDUPP0A==}
     hasBin: true
 
+  cborg@6.1.2:
+    resolution: {integrity: sha512-hQfFh6FuuCDoycN68FtUpjtQx5kCtxOLA8msbpJZxjtxaMqxgHl+4GNwO+0YexH/lHmVzhhAKa0ua+vtmTRoVw==}
+    hasBin: true
+
   conf@15.1.0:
     resolution: {integrity: sha512-Uy5YN9KEu0WWDaZAVJ5FAmZoaJt9rdK6kH+utItPyGsCqCgaTKkrmZx3zoE0/3q6S3bcp3Ihkk+ZqPxWxFK5og==}
     engines: {node: '>=20'}
@@ -486,9 +490,8 @@ packages:
       picomatch:
         optional: true
 
-  foc-encryption@file:vendor/foc-encryption:
-    resolution: {directory: vendor/foc-encryption, type: directory}
-    engines: {node: '>=20'}
+  filecoin-encryption-envelope@0.1.0:
+    resolution: {integrity: sha512-KxfTn1/e3HUaPJJ+LkipqkztQMopNeeWvi45gI7IbaAFdjcrI8vlvPYwrGf5RU1ElMniETFyRBS/NNjs5ZIsuQ==}
 
   from-exponential@1.1.1:
     resolution: {integrity: sha512-VBE7f5OVnYwdgB3LHa+Qo29h8qVpxhVO9Trlc+AWm+/XNAgks1tAwMFHb33mjeiof77GglsJzeYF7OqXrROP/A==}
@@ -1071,6 +1074,8 @@ snapshots:
 
   cborg@5.1.11: {}
 
+  cborg@6.1.2: {}
+
   conf@15.1.0:
     dependencies:
       ajv: 8.20.0
@@ -1116,9 +1121,10 @@ snapshots:
     optionalDependencies:
       picomatch: 4.0.7
 
-  foc-encryption@file:vendor/foc-encryption:
+  filecoin-encryption-envelope@0.1.0:
     dependencies:
-      cborg: 5.1.11
+      cborg: 6.1.2
+      zod: 4.4.3
 
   from-exponential@1.1.1: {}
 

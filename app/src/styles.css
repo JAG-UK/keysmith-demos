@@ -153,3 +153,86 @@ pre.code { margin: 8px 0 0; padding: 10px 12px; border-radius: 8px; background: 
 .activity .tone-dim span { color: var(--muted); }
 .activity .tone-prompt span { color: var(--warn); font-weight: 600; }
 .activity-end { height: 0; padding: 0; }
+
+/* ── session keys (the console's shapes) ──────────────────────────────────── */
+.table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+thead th { font-size: 12px; font-weight: 600; color: var(--muted); background: var(--surface-2); }
+tbody tr:last-child > * { border-bottom: 0; }
+tr.open > td { background: var(--accent-soft); }
+.pills { display: flex; flex-wrap: wrap; gap: 4px; }
+.pill.mono { text-transform: none; letter-spacing: 0; font-family: var(--mono); font-weight: 500; }
+.status-active { background: var(--ok-soft); color: var(--ok); }
+.status-expired { background: var(--warn-soft); color: var(--warn); }
+.status-revoked { background: var(--error-soft); color: var(--error); }
+.status-unknown { background: var(--surface-2); color: var(--muted); }
+.button.compact { padding: 4px 10px; font-size: 13px; }
+.button.danger { background: transparent; color: var(--error); border-color: var(--error); }
+.row.end { justify-content: flex-end; }
+
+.dialog { position: fixed; inset: 0; z-index: 10; width: 100%; height: 100%; max-width: none; max-height: none; margin: 0; padding: 16px; border: 0; background: rgb(8 10 14 / 0.55); display: grid; place-items: center; }
+.dialog-card { width: 100%; max-width: 560px; max-height: calc(100vh - 32px); overflow-y: auto; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; display: grid; gap: 12px; }
+.dialog-card h3 { margin: 0; font-size: 18px; }
+fieldset.field { border: 0; padding: 0; margin: 0; display: grid; gap: 6px; min-width: 0; }
+fieldset.field legend { padding: 0; margin-bottom: 4px; font-size: 12px; color: var(--muted); }
+fieldset.keysmith { border: 1px solid var(--accent); border-radius: 8px; padding: 10px 12px; background: var(--accent-soft); }
+.choice { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; align-items: start; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); cursor: pointer; }
+.choice > span { display: grid; gap: 2px; font-size: 14px; color: var(--text); }
+.choice.destructive { border-color: var(--warn); }
+.choice .pill { justify-self: start; }
+
+.workbench { border: 1px solid var(--accent); border-radius: 8px; padding: 12px 14px; display: grid; gap: 10px; }
+.workbench h3 { margin: 0; font-size: 14px; }
+.workbench-grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+
+/* ── access matrix ────────────────────────────────────────────────────────── */
+table.matrix th, table.matrix td { text-align: center; vertical-align: middle; }
+table.matrix tbody th { text-align: left; font-weight: 600; font-size: 13px; color: var(--text); background: transparent; }
+table.matrix thead th { white-space: nowrap; }
+.cell { width: 34px; height: 30px; border-radius: 6px; border: 1px solid transparent; font-size: 15px; font-weight: 700; cursor: pointer; }
+.cell-ok { background: var(--ok-soft); color: var(--ok); }
+.cell-no { background: var(--error-soft); color: var(--error); }
+.cell.picked { border-color: currentColor; }
+
+/* ── inspector ────────────────────────────────────────────────────────────── */
+.inspector-inputs { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); align-items: start; }
+.dropzone { display: grid; place-items: center; gap: 8px; min-height: 108px; padding: 14px; border: 2px dashed var(--border); border-radius: 10px; background: var(--surface-2); color: var(--muted); font-size: 14px; text-align: center; cursor: pointer; }
+.dropzone input { max-width: 100%; font-size: 12px; }
+.pill.pick { border: 0; cursor: pointer; text-transform: none; letter-spacing: 0; font-family: var(--mono); font-weight: 500; }
+.bytes-view { display: grid; gap: 14px; grid-template-columns: minmax(0, max-content) minmax(0, 1fr); align-items: start; }
+@media (max-width: 980px) { .bytes-view { grid-template-columns: minmax(0, 1fr); } }
+.hex { font: 12px/1.6 var(--mono); padding: 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); overflow-x: auto; max-height: 460px; overflow-y: auto; }
+.hex-row { white-space: nowrap; }
+.offset { color: var(--muted); margin-right: 10px; }
+.byte { display: inline-block; padding: 0 2px; border-radius: 3px; cursor: default; }
+.fields { list-style: none; margin: 0; padding: 0; border: 1px solid var(--border); border-radius: 8px; max-height: 460px; overflow-y: auto; font-size: 13px; }
+.fields li { display: grid; grid-template-columns: max-content minmax(0, 1fr); column-gap: 10px; padding: 5px 8px; border-left: 4px solid transparent; }
+.fields li > .small { grid-column: 1 / -1; }
+.field-name { font-weight: 600; }
+.field-value { overflow-wrap: anywhere; }
+.fields li.lit, .byte.lit { outline: 2px solid var(--accent); outline-offset: -2px; }
+/* one tint per kind of byte, the same in the hex and the field list */
+.g-structure { background: var(--surface-2); }
+.g-protected { background: #e7ecfd; }
+.g-header { background: #eef0f4; }
+.g-labels { background: #fdf1dd; }
+.g-nonce { background: #e9e4fb; }
+.g-ciphertext { background: #e4f4ea; }
+.g-tag { background: #fde7e5; }
+.g-descriptor { background: #fdf1dd; }
+.g-wrap { background: #e4f4ea; }
+.g-info { background: #eef0f4; }
+.fields li[class*='g-'] { border-left-color: var(--border); }
+@media (prefers-color-scheme: dark) {
+  .g-protected { background: #1e2645; }
+  .g-header, .g-info { background: #1f2531; }
+  .g-labels, .g-descriptor { background: #2d2213; }
+  .g-nonce { background: #251f3d; }
+  .g-ciphertext, .g-wrap { background: #13291d; }
+  .g-tag { background: #331816; }
+}
+.openings { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; font-size: 14px; }
+.openings > li { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
+.openings > li.ok { border-color: var(--ok); }
+.path { margin: 6px 0 0; padding-left: 20px; display: grid; gap: 2px; }

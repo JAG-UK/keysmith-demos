@@ -9,7 +9,7 @@
  * Layers: keys.mjs derives · FEE encrypts · Curio stores · FWSS records.
  */
 import { Synapse } from '@filoz/synapse-sdk'
-import { CoseAlgorithm, encrypt } from 'foc-encryption'
+import { encryptBytes } from './lib/fee.mjs'
 import { formatUnits, http, parseUnits } from 'viem'
 import { clientFor, devnet, note, save, step } from './lib/devnet.mjs'
 import * as Keys from './lib/keys.mjs'
@@ -47,10 +47,7 @@ note(`foc/kc = ${kc}   (non-secret commitment, D3b)`)
 step('Derive a key for this piece, and encrypt with FEE')
 const salt = Keys.newSalt()
 const meta = Keys.appMetadata({ ...ref, salt })
-const ciphertext = await encrypt(plaintext, Keys.pieceKey(KK, salt), {
-  algorithm: CoseAlgorithm.CHUNKED_AES_256_GCM_STREAM,
-  appMetadata: meta,
-})
+const ciphertext = await encryptBytes(plaintext, Keys.pieceKey(KK, salt), meta)
 Trace.envelope(ciphertext, 'the piece as it will be stored')
 note(`plaintext ${plaintext.length} B → envelope ${ciphertext.length} B`)
 note(`app_metadata: ${JSON.stringify(meta)}`)
