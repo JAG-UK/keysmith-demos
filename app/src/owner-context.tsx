@@ -5,18 +5,19 @@ import { useConnection } from 'wagmi'
 import { useActivity } from './activity.tsx'
 import { Keyring } from './keyring.ts'
 import type { Network } from './networks.ts'
-import type { DataSet, OwnerEnv } from './owner.ts'
+import type { OwnerEnv } from './owner.ts'
 
 interface Owner {
   /** Everything the owner flows need, once a wallet is connected on a known network. */
   env: OwnerEnv | null
   /** Keyspace signatures the wallet has given Keysmith in this tab (not Warm Storage's). */
   signatures: number
-  /** The keyspace being worked on, and its dataset once created or recovered. */
+  /** The keyspace being worked on. */
   current: { keyspace: Hex; commitment: string } | null
-  dataSet: DataSet | null
+  /** Whether it has storage yet: Synapse has made its datasets, so agents can add to them. */
+  stored: boolean
   setCurrent: (current: { keyspace: Hex; commitment: string } | null) => void
-  setDataSet: (dataSet: DataSet | null) => void
+  setStored: (stored: boolean) => void
 }
 
 const OwnerContext = createContext<Owner | null>(null)
@@ -28,7 +29,7 @@ export function OwnerProvider(props: { network: Network | undefined; children: R
   const [provider, setProvider] = useState<EIP1193Provider | null>(null)
   const [signatures, setSignatures] = useState(0)
   const [current, setCurrent] = useState<Owner['current']>(null)
-  const [dataSet, setDataSet] = useState<DataSet | null>(null)
+  const [stored, setStored] = useState(false)
 
   useEffect(() => {
     let live = true
@@ -66,8 +67,8 @@ export function OwnerProvider(props: { network: Network | undefined; children: R
 
   const env = keyring && network && address && provider ? { network, owner: address, provider, keyring, activity } : null
   const value = useMemo<Owner>(
-    () => ({ env, signatures, current, dataSet, setCurrent, setDataSet }),
-    [env, signatures, current, dataSet]
+    () => ({ env, signatures, current, stored, setCurrent, setStored }),
+    [env, signatures, current, stored]
   )
   return <OwnerContext.Provider value={value}>{props.children}</OwnerContext.Provider>
 }

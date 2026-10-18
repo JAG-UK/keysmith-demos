@@ -14,8 +14,8 @@
     "app:check": "tsc -p app --noEmit"
   },
   "dependencies": {
-    "@filoz/synapse-core": "^0.9.1",
-    "@filoz/synapse-sdk": "^2.0.0",
+    "@filoz/synapse-core": "^0.10.1",
+    "@filoz/synapse-sdk": "^2.0.2",
     "@tanstack/react-query": "^5.104.3",
     "cborg": "^5.1.11",
     "filecoin-encryption-envelope": "0.1.0",

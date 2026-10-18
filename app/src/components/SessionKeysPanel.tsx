@@ -15,7 +15,7 @@ import {
 } from '../agents.ts'
 import { useAgents } from '../agents-context.tsx'
 import { useOwner } from '../owner-context.tsx'
-import { readerFor } from '../owner.ts'
+import { dataSetMetadata, readerFor } from '../storage.ts'
 import { CreateKeyDialog } from './CreateKeyDialog.tsx'
 import { short } from './Header.tsx'
 import { Notice } from './Panel.tsx'
@@ -23,7 +23,7 @@ import { Notice } from './Panel.tsx'
 type Status = 'active' | 'expired' | 'revoked' | 'unknown'
 
 export function SessionKeysPanel() {
-  const { env, current, dataSet } = useOwner()
+  const { env, current, stored } = useOwner()
   const { agents } = useAgents()
   const [creating, setCreating] = useState(false)
   const [managing, setManaging] = useState<Address | null>(null)
@@ -62,7 +62,7 @@ export function SessionKeysPanel() {
         Keysmith adds the other half: <strong>encryption grants</strong> that say which of your data each key can read and write.
       </p>
       {!current ? <Notice tone="info">Start or recover a keyspace in the Owner panel to give keys encryption grants.</Notice> : null}
-      {current && !dataSet ? <Notice tone="info">Create or recover a dataset in the Owner panel for agents to write to.</Notice> : null}
+      {current && !stored ? <Notice tone="info">Store a first piece, or recover, in the Owner panel: agents add to the same storage.</Notice> : null}
       <div className="row">
         <button type="button" className="button primary" onClick={() => setCreating(true)}>
           + New session key
@@ -134,7 +134,7 @@ export function SessionKeysPanel() {
 
 /** One agent at work: write as it, share it more keys, or revoke it. */
 function Workbench(props: { address: Address; active: boolean; onRevoked: () => void }) {
-  const { env, current, dataSet } = useOwner()
+  const { env, current, stored } = useOwner()
   const { agents, upsert, bump } = useAgents()
   const activity = useActivity()
   const write = useWriteContract()
@@ -157,11 +157,11 @@ function Workbench(props: { address: Address; active: boolean; onRevoked: () => 
   }
 
   const writeAs = run('write', async () => {
-    if (!dataSet) throw new Error('No dataset yet: create or recover one in the Owner panel.')
+    if (!current || !stored) throw new Error('Nothing stored in this keyspace yet: store a first piece, or recover, in the Owner panel.')
     const grant = agent.grants[choice] as Hex
     const scope = grants[choice].node.replace(/^scope:/, '')
-    activity.log(`"${agent.name}" opens its ${scope} grant, encrypts, uploads, and adds the piece, signing as its session key. No wallet prompt.`, 'dim')
-    const cid = await agentWrite(env.network, agent, grant, dataSet, text)
+    activity.log(`"${agent.name}" opens its ${scope} grant, encrypts, and hands the piece to Synapse, signing as its session key. No wallet prompt.`, 'dim')
+    const cid = await agentWrite(env.network, env.owner, agent, grant, dataSetMetadata(current.keyspace, current.commitment), text)
     activity.log(`"${agent.name}" wrote a piece under ${scope}: ${cid}`, 'ok')
     bump()
   })
@@ -216,7 +216,7 @@ function Workbench(props: { address: Address; active: boolean; onRevoked: () => 
               </label>
               <textarea rows={2} value={text} onChange={(event) => setText(event.target.value)} />
               <div className="row">
-                <button type="button" className="button primary" disabled={busy != null || !dataSet || !props.active} onClick={writeAs}>
+                <button type="button" className="button primary" disabled={busy != null || !stored || !props.active} onClick={writeAs}>
                   {busy === 'write' ? 'Writing… (about a minute)' : `Write as ${agent.name}`}
                 </button>
                 {!props.active ? <span className="muted small">Not authorised on chain.</span> : null}

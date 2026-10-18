@@ -104,20 +104,86 @@ The page serves `devnet-info.json` to itself without the `users` section, so no 
 private key reaches the browser, and proxies `/rpc/v1` to Lotus, which sends no CORS
 headers. Restart `pnpm web` after restarting the devnet.
 
-## The demo app (in progress)
+## The demo app
 
-[`app/`](app/) is a fuller React and wagmi app, built in phases: an owner creating and
-recovering a keyspace, session keys authorised the way the Filecoin Pay console does
-with grants for a shared scope and a private scope each, a live matrix of who can read
-what, and an inspector for piece and grant bytes. It runs against the devnet, and also
-calibration and mainnet for anyone with tokens.
+[`app/`](app/) is the whole story in one page, on devnet, calibration or mainnet:
+
+1. **Owner.** Start a keyspace from your wallet, encrypt a first piece, and hand it to
+   `synapse.storage.upload()` with the keyspace and its commitment as dataset metadata.
+   Reload, then Recover: one signature per keyspace rebuilds every key from the chain.
+2. **Session keys.** Authorise agents in SessionKeyRegistry, in the same shape as the
+   Filecoin Pay console (`login`, `revoke`, live status), and share each one encryption
+   grants: `scope:shared` for all of them, and `scope:agents/<name>` for each. Agents
+   then upload through Synapse as their session keys, with no wallet prompt.
+3. **Who can read what.** Every reader against every piece of the keyspace: green is a
+   real decryption of the ciphertext Synapse downloaded, red is Keysmith's reason why not.
+4. **Inspector.** Drop in a piece or a grant (file, pasted hex or base64, or a CID) to see
+   its bytes decoded field by field, who can open it, and the derivation path.
 
 ```bash
 pnpm app
 ```
 
-Then open <http://localhost:5790>. `pnpm app:check` type-checks it and `pnpm app:build`
-builds a static site into `dist-app/`; built that way it offers only the public networks.
+Then open <http://localhost:5790> in a browser with your wallet. `pnpm app:check`
+type-checks it. `pnpm app:build` builds a static site into `dist-app/` that you can host
+anywhere; built that way it offers calibration and mainnet only, since devnet needs the
+dev server's proxy.
+
+### Networks
+
+| Network | Tokens |
+| --- | --- |
+| Devnet | Import a devnet user's key into your wallet (see above) |
+| Calibration | tFIL for gas and USDFC for storage, from the [calibration faucets](https://docs.filecoin.io/networks/calibration) |
+| Mainnet | Real FIL and USDFC: everything costs money |
+
+The app never chooses or remembers a storage provider. Synapse picks them and keeps
+copies, and repair can move pieces between providers and datasets without telling
+anyone. So every write passes the same dataset metadata (`foc/ks`, `foc/kc`) and Synapse
+adds to whichever datasets match. Every read lists the keyspace's pieces from the chain
+and fetches each one by piece CID with `synapse.storage.download()`. On public networks,
+Recover scans only datasets that record a keyspace, so it never downloads other apps' data.
+
+Uploads are confirmed by the chain. Curio batches piece additions, and its add-pieces status
+endpoint can answer 404 or "not yet" for minutes after the transaction has landed, which
+`upload()` waits on. Once Synapse has submitted the add-pieces transactions, the app takes
+their receipts as the confirmation ([`app/src/storage.ts`](app/src/storage.ts)).
+
+Agents check their own authorization with an account-less read of SessionKeyRegistry.
+`sessionKey.syncExpirations()` reads as the session key, and Lotus refuses calls from an
+address it has never seen, so a fresh key would read as unauthorized.
+
+Calibration's providers currently advertise a 1 MiB minimum piece size, and Synapse does
+not enforce it. If a provider refuses a small piece, write a longer one.
+
+### What a first run costs
+
+| Step | Wallet prompts |
+| --- | --- |
+| Connect | connect; add or switch network |
+| Start a keyspace | 2 identical signatures the first time this browser sees the wallet, then 1 |
+| Store the first piece | first time only: USDFC allowance, deposit, approve Warm Storage (3 transactions); then Synapse's signatures to create the datasets and add the piece, for each copy (6 on devnet, with two copies), which the providers submit |
+| Each session key | 1 transaction (`login`); its encryption grants cost none |
+| Each agent write | none: the agent signs with its session key |
+| Revoke | 1 transaction |
+| Recover | 1 signature per keyspace |
+
+### Wallets
+
+Keysmith needs a wallet that signs EIP-712 with a plain secp256k1 key, and signs the same
+message the same way every time (RFC 6979). The app checks both, and explains a refusal in
+its activity log.
+
+| Wallet | Expected |
+| --- | --- |
+| MetaMask (extension) | Works: tested on devnet |
+| MetaMask with a Ledger or Trezor | Should work: hardware wallets sign deterministically |
+| Rabby, Coinbase Wallet (extension, not smart wallet), Frame | Should work; not yet tested |
+| Safe, Coinbase Smart Wallet, ERC-4337 and passkey accounts | Refused: their signatures are not plain ECDSA, so there is no key to derive from |
+| Embedded and MPC wallets that randomise signatures | Refused: the first keyspace's two signatures differ |
+
+Browser wallets connect through EIP-6963, so each installed wallet appears by name.
+WalletConnect, for mobile wallets, is not included: it needs a project id.
 
 ## Verbose tracing
 
@@ -196,9 +262,9 @@ key from the wrong scope key and GCM rejects it, with both keys on screen.
   are secp256k1, so no separate published encryption key is needed. Hardware and contract
   wallets can't do ECDH — those need the signature-derived X25519 key, still open.
 - **We confirm piece additions against PDPVerifier, not the SP status endpoint.**
-  `synapse-core@0.9.1` polls `/pdp/data-sets/{id}/pieces/added/{hash}`, which this devnet's
-  Curio build does not serve ("Piece addition not found for given transaction"). The SDK's
-  own `storage.upload()` fails identically here, so it is version drift, not these demos —
-  the pieces land on chain correctly either way.
+  synapse-core polls `/pdp/data-sets/{id}/pieces/added/{hash}`. Curio batches piece
+  additions, so that endpoint answers 404 ("Piece addition not found for given
+  transaction") or "not yet" long after the transaction has landed, and synapse-core gives
+  up. The pieces are on chain either way.
 - **A dataset can mix encrypted and plaintext pieces.** Demo 6 skips anything that isn't a
   FEE envelope.

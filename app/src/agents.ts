@@ -10,16 +10,17 @@
 import * as Keysmith from '@filoz/keysmith'
 import {
   AddPiecesPermission,
+  authorizationExpiry,
   CreateDataSetPermission,
+  fromSecp256k1,
   SchedulePieceRemovalsPermission,
   TerminateServicePermission,
 } from '@filoz/synapse-core/session-key'
-import { type Address, bytesToHex, createClient, type Hex, hexToBytes, http, publicActions } from 'viem'
-import { privateKeyToAccount } from 'viem/accounts'
+import { Synapse } from '@filoz/synapse-sdk'
+import { type Address, bytesToHex, type Hex, hexToBytes, http } from 'viem'
 import { decryptBytes, encryptBytes } from '../../lib/fee.mjs'
-import { addPiece, putPiece } from '../../lib/store.mjs'
 import type { Network } from './networks.ts'
-import type { DataSet } from './owner.ts'
+import { readerFor, store } from './storage.ts'
 
 // ── the console's model ────────────────────────────────────────────────────
 
@@ -107,17 +108,19 @@ export async function shareScope(record: SessionKeyRecord, kk: Uint8Array, keysp
 }
 
 /**
- * The agent's side: open its grant, write one piece under that scope, and add
- * it to the owner's dataset, signing as the session key. No wallet involved.
+ * The agent's side: open its grant, write one piece under that scope, and hand
+ * it to Synapse as the owner's session key. No wallet involved. The dataset
+ * metadata is the owner's (keyspace and commitment, both public on chain), so
+ * Synapse adds to the owner's datasets rather than making new ones.
  */
 export async function agentWrite(
   network: Network,
+  owner: Address,
   record: SessionKeyRecord,
   grantHex: Hex,
-  dataSet: DataSet,
+  dataSetMetadata: Record<string, string>,
   text: string
 ): Promise<string> {
-  if (!network.sp) throw new Error(`Storing on ${network.label} arrives in phase 5.`)
   const grant = Keysmith.decodeGrant(hexToBytes(grantHex))
   const target = Keysmith.writeTarget(grant, await Keysmith.unwrapWith(record.privateKey, grant))
   const salt = Keysmith.newSalt()
@@ -126,10 +129,17 @@ export async function agentWrite(
     Keysmith.pieceKey(target.key, salt),
     Keysmith.pieceMetadata(target.ref, { salt, scope: target.scope })
   )
-  const pieceCid = await putPiece(network.sp.serviceURL, ciphertext)
-  const agent = createClient({ chain: network.readChain, transport: http(), account: privateKeyToAccount(record.privateKey) }).extend(publicActions)
-  await addPiece(agent, { serviceURL: network.sp.serviceURL, dataSetId: dataSet.id, clientDataSetId: dataSet.clientDataSetId, pieceCid })
-  return pieceCid.toString()
+  // sessionKey.syncExpirations() reads as the session key, and Lotus refuses calls from an address it
+  // has never seen, so a fresh key reads as unauthorized. Read the registry without an account instead.
+  const expiry = await authorizationExpiry(readerFor(network), { address: owner, sessionKeyAddress: record.sessionKeyPublic, permission: AddPiecesPermission })
+  if (expiry <= BigInt(Math.floor(Date.now() / 1000))) {
+    throw new Error(`"${record.name}" may not add pieces: its session key is ${expiry === 0n ? 'not authorized, or was revoked' : 'expired'}.`)
+  }
+  const sessionKey = fromSecp256k1({ privateKey: record.privateKey, root: owner, chain: network.readChain, transport: http() })
+  // Checked above; the chain checks it again when the piece is added.
+  const synapse = Synapse.create({ chain: network.readChain, transport: http(), account: owner, sessionKey, requiredPermissions: [], source: 'keysmith-demo' })
+  const { pieceCid } = await store(synapse, network, ciphertext, dataSetMetadata)
+  return pieceCid
 }
 
 /** A node key someone holds, and what it is. */

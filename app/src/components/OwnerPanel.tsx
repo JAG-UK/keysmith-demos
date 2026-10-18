@@ -3,23 +3,23 @@ import { useState } from 'react'
 import { useActivity } from '../activity.tsx'
 import { keyspaceRequest } from '../keyring.ts'
 import { useOwner } from '../owner-context.tsx'
-import { createDataset, type RecoveredDataSet, recover, type StepId, type StepState } from '../owner.ts'
+import { type RecoveredKeyspace, recover, type StepId, type StepState, storeFirstPiece } from '../owner.ts'
 import { Notice } from './Panel.tsx'
 
 const STEPS: { id: StepId; label: string }[] = [
   { id: 'encrypt', label: 'Encrypt in this tab' },
   { id: 'fund', label: 'Payment setup' },
-  { id: 'upload', label: 'Upload the ciphertext to the SP' },
-  { id: 'create', label: 'Create the dataset' },
+  { id: 'upload', label: 'Synapse stores it, with copies' },
+  { id: 'commit', label: 'Recorded on chain' },
 ]
 
 export function OwnerPanel() {
-  const { env, signatures, current, dataSet, setCurrent, setDataSet } = useOwner()
+  const { env, signatures, current, stored, setCurrent, setStored } = useOwner()
   const activity = useActivity()
   const [busy, setBusy] = useState<string | null>(null)
   const [text, setText] = useState(() => `First piece, written ${new Date().toLocaleString()}.`)
   const [steps, setSteps] = useState<Partial<Record<StepId, StepState>>>({})
-  const [recovered, setRecovered] = useState<RecoveredDataSet[] | null>(null)
+  const [recovered, setRecovered] = useState<RecoveredKeyspace[] | null>(null)
   // Minted up front, so the preview shows exactly what the wallet will be asked to sign.
   const [draft, setDraft] = useState(() => Keysmith.newKeyspace())
 
@@ -43,19 +43,19 @@ export function OwnerPanel() {
     const { commitment } = await env.keyring.keysFor(keyspace)
     setCurrent({ keyspace, commitment })
     setDraft(Keysmith.newKeyspace())
-    setDataSet(null)
+    setStored(false)
     setSteps({})
     activity.log(`Keyspace key derived, in this tab only. Its commitment ${commitment} is the one trace that goes on chain.`, 'ok')
   })
 
-  const store = run('dataset', async () => {
+  const store = run('store', async () => {
     if (!current) return
     setSteps({})
     const onStep = (id: StepId, state: StepState) => setSteps((all) => ({ ...all, [id]: state }))
     try {
-      const created = await createDataset(env, current.keyspace, text, onStep)
-      setDataSet(created)
-      activity.log(`Dataset ${created.id} created; its first piece is live.`, 'ok')
+      const { pieceCid } = await storeFirstPiece(env, current.keyspace, text, onStep)
+      setStored(true)
+      activity.log(`First piece ${pieceCid} is on chain; Synapse chose the providers and the datasets.`, 'ok')
     } catch (err) {
       setSteps((all) => {
         const active = STEPS.find((step) => all[step.id]?.status === 'active')
@@ -68,28 +68,27 @@ export function OwnerPanel() {
   const forget = () => {
     env.keyring.forget()
     setCurrent(null)
-    setDataSet(null)
+    setStored(false)
     setRecovered(null)
     activity.log('Forgot every key in this tab, the same as a reload.')
   }
 
   const doRecover = run('recover', async () => {
-    const found: RecoveredDataSet[] = []
+    const found: RecoveredKeyspace[] = []
     setRecovered(found)
     await recover(env, (each) => {
       found.push(each)
       setRecovered([...found])
-      // Pick up the newest keyspace's dataset, so the agents can carry on after a reload.
+      // Pick up the newest keyspace, so the agents can carry on after a reload.
       if (each.keyspace && each.check === 'commitment matches') {
         const keys = env.keyring.keyspaces.get(each.keyspace)
         if (keys) setCurrent({ keyspace: each.keyspace, commitment: keys.commitment })
-        setDataSet({ id: each.id, clientDataSetId: each.clientDataSetId, keyspace: each.keyspace })
+        setStored(true)
       }
     })
-    activity.log(`Recovered ${found.length} dataset(s). Each keyspace not already in this tab cost one signature.`, 'ok')
+    activity.log(`Recovered ${found.length} keyspace(s). Each one not already in this tab cost one signature.`, 'ok')
   })
 
-  const noStorage = !env.network.sp
   return (
     <div className="stack">
       <div className="counters">
@@ -131,20 +130,23 @@ export function OwnerPanel() {
       </section>
 
       <section className="section">
-        <h3>First dataset</h3>
-        {noStorage ? <Notice tone="info">Storing on {env.network.label} arrives in phase 5. Use the devnet for now.</Notice> : null}
+        <h3>First piece</h3>
+        <p className="muted small">
+          Synapse picks the providers and keeps copies. The datasets it makes record the keyspace and its commitment, so
+          every later write in this keyspace lands in them too. Which provider holds what can change: nothing here depends on it.
+        </p>
         <label className="field">
           <span>Its first piece</span>
-          <textarea rows={2} value={text} onChange={(event) => setText(event.target.value)} disabled={dataSet != null} />
+          <textarea rows={2} value={text} onChange={(event) => setText(event.target.value)} disabled={stored} />
         </label>
         <div className="row">
           <button
             type="button"
             className="button primary"
-            disabled={busy != null || !current || dataSet != null || noStorage}
+            disabled={busy != null || !current || stored}
             onClick={store}
           >
-            {busy === 'dataset' ? 'Working…' : 'Encrypt and store'}
+            {busy === 'store' ? 'Working…' : 'Encrypt and store'}
           </button>
           {!current ? <span className="muted small">Start a keyspace first.</span> : null}
         </div>
@@ -162,11 +164,7 @@ export function OwnerPanel() {
             })}
           </ol>
         ) : null}
-        {dataSet ? (
-          <Notice tone="ok">
-            Dataset {dataSet.id.toString()} records keyspace and commitment, and nothing secret.
-          </Notice>
-        ) : null}
+        {stored ? <Notice tone="ok">Stored. The chain records the keyspace and its commitment, and nothing secret.</Notice> : null}
       </section>
 
       <section className="section">
@@ -179,35 +177,40 @@ export function OwnerPanel() {
           <button type="button" className="button ghost" disabled={busy != null || env.keyring.keyspaces.size === 0} onClick={forget}>
             Forget keys
           </button>
-          <button type="button" className="button primary" disabled={busy != null || noStorage} onClick={doRecover}>
+          <button type="button" className="button primary" disabled={busy != null} onClick={doRecover}>
             {busy === 'recover' ? 'Recovering…' : 'Recover'}
           </button>
         </div>
-        {recovered ? <Recovered dataSets={recovered} /> : null}
+        {recovered ? <Recovered keyspaces={recovered} reading={busy === 'recover'} network={env.network.label} /> : null}
       </section>
     </div>
   )
 }
 
-function Recovered(props: { dataSets: RecoveredDataSet[] }) {
-  if (props.dataSets.length === 0) return <p className="muted small">Reading the chain…</p>
+function Recovered(props: { keyspaces: RecoveredKeyspace[]; reading: boolean; network: string }) {
+  if (props.keyspaces.length === 0) {
+    return <p className="muted small">{props.reading ? 'Reading the chain…' : `This wallet pays for no datasets on ${props.network}.`}</p>
+  }
   return (
     <ul className="recovered">
-      {props.dataSets.map((dataSet) => (
-        <li key={dataSet.id.toString()}>
+      {props.keyspaces.map((found) => (
+        <li key={`${found.keyspace}:${found.dataSetIds.join(',')}`}>
           <div className="recovered-head">
-            <strong>Dataset {dataSet.id.toString()}</strong>
-            <span className={`pill ${dataSet.check === 'commitment matches' ? 'pill-ok' : dataSet.check === 'commitment mismatch' ? 'pill-error' : ''}`}>
-              {dataSet.check}
+            <strong className="mono small">{found.keyspace ?? 'No keyspace'}</strong>
+            <span className={`pill ${found.check === 'commitment matches' ? 'pill-ok' : found.check === 'commitment mismatch' ? 'pill-error' : ''}`}>
+              {found.check}
             </span>
-            {dataSet.keyspace ? <span className="mono small muted">{dataSet.keyspace}</span> : null}
+            <span className="muted small">
+              {found.pieces.length} piece{found.pieces.length === 1 ? '' : 's'}, listed in dataset{found.dataSetIds.length === 1 ? '' : 's'}{' '}
+              {found.dataSetIds.join(', ')}
+            </span>
           </div>
           <ul className="pieces">
-            {dataSet.pieces.map((piece) => (
-              <li key={piece.id.toString()}>
-                <a className="mono small" href={piece.url} target="_blank" rel="noreferrer">
-                  piece {piece.id.toString()}
-                </a>
+            {found.pieces.map((piece) => (
+              <li key={piece.cid}>
+                <span className="mono small" title={piece.cid}>
+                  …{piece.cid.slice(-10)}
+                </span>
                 <span className="pill">{piece.scope ?? (piece.note ? '—' : 'no scope')}</span>
                 <span className={piece.text ? '' : 'muted'}>{piece.text ?? piece.note}</span>
               </li>

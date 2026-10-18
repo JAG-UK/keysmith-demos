@@ -54,7 +54,19 @@ export function describeError(err: unknown): string {
   }
   const e = err as { shortMessage?: string; message?: string; details?: string }
   const detail = e?.details ? ` (${e.details})` : ''
-  return `${e?.shortMessage ?? e?.message ?? String(err)}${detail}`
+  const message = `${e?.shortMessage ?? e?.message ?? String(err)}${detail}`
+  return `${message}${walletAdvice(message)}`
+}
+
+/** The two ways a wallet can't root a keyspace, said in terms of the wallet. */
+function walletAdvice(message: string): string {
+  if (/64- or 65-byte/.test(message)) {
+    return ' This looks like a smart-contract or passkey wallet (Safe, a smart account): Keysmith needs a plain ECDSA account, such as MetaMask, a Ledger, or Rabby.'
+  }
+  if (/not deterministic/.test(message)) {
+    return ' This wallet adds randomness to its signatures, so the same message never gives the same key twice. Use a wallet that signs deterministically (RFC 6979), such as MetaMask or a Ledger.'
+  }
+  return ''
 }
 
 export function ActivityLog() {

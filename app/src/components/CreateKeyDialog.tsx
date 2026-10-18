@@ -16,7 +16,7 @@ import {
 } from '../agents.ts'
 import { useAgents } from '../agents-context.tsx'
 import { useOwner } from '../owner-context.tsx'
-import { readerFor } from '../owner.ts'
+import { readerFor } from '../storage.ts'
 import { Notice } from './Panel.tsx'
 
 /**

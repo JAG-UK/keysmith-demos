@@ -1,6 +1,5 @@
 import { calibration, type FilecoinChain, mainnet } from '@filoz/synapse-core/chains'
 import { toChain } from '@filoz/synapse-core/devnet'
-import type { Address } from 'viem'
 
 export type NetworkId = 'devnet' | 'calibration' | 'mainnet'
 
@@ -15,8 +14,6 @@ export interface Network {
    * sends no CORS headers.
    */
   readChain: FilecoinChain
-  /** The storage provider pieces go to. Calibration and mainnet pick one in phase 5. */
-  sp?: { serviceURL: string; payee: Address }
   note: string
 }
 
@@ -28,13 +25,11 @@ export async function loadNetworks(): Promise<Network[]> {
     const devnet = await response.json()
     const chain = toChain(devnet)
     const proxied = { http: [`${location.origin}/rpc/v1`] }
-    const [sp] = devnet.info.pdp_sps
     networks.push({
       id: 'devnet',
       label: 'Devnet',
       chain,
       readChain: { ...chain, rpcUrls: { default: proxied, public: proxied } },
-      sp: { serviceURL: sp.pdp_service_url, payee: sp.eth_addr },
       note: `foc-devnet run ${devnet.info.run_id}. Import a devnet user's key into your wallet to fund it.`,
     })
   }

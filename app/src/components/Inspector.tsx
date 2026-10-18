@@ -1,14 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { type Hex, hexToBytes } from 'viem'
-import { getPiece, listPiecesOnChain } from '../../../lib/store.mjs'
 import { describeError, useActivity } from '../activity.tsx'
 import { decodedGrants, heldKeysOf } from '../agents.ts'
 import { useAgents } from '../agents-context.tsx'
 import { inspectBytes, type View } from '../inspector/describe.ts'
 import { type GrantOpening, openGrant, openPiece, type PieceOpening, type Reader } from '../inspector/open.ts'
-import type { Network } from '../networks.ts'
 import { useOwner } from '../owner-context.tsx'
-import { readerFor } from '../owner.ts'
+import { keyspacePieces, readerSynapse } from '../storage.ts'
 import { Notice } from './Panel.tsx'
 
 const SHOWN = 1536 // bytes of hex before the view trims; the fields still cover everything
@@ -25,8 +23,8 @@ function bytesFromText(text: string): Uint8Array {
 const toBase64Url = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 
 /** Reading bytes needs no wallet; only "who can open it" uses the keys this page holds. */
-export function Inspector(props: { network: Network | undefined }) {
-  const { env, dataSet, current } = useOwner()
+export function Inspector() {
+  const { env, stored, current } = useOwner()
   const { agents } = useAgents()
   const activity = useActivity()
   const [input, setInput] = useState<{ bytes: Uint8Array; source: string } | null>(null)
@@ -72,8 +70,9 @@ export function Inspector(props: { network: Network | undefined }) {
   }, [view, input, env, agents, current])
 
   const fetchPiece = async (pieceCid: string) => {
-    if (!props.network?.sp) throw new Error('No storage provider on this network yet.')
-    load(await getPiece(props.network.sp.serviceURL, pieceCid), `piece ${pieceCid}`)
+    // Synapse finds a provider holding it among the datasets this wallet pays for.
+    if (!env) throw new Error('Connect a wallet first: pieces are found among the datasets it pays for.')
+    load(await readerSynapse(env.network, env.owner).storage.download({ pieceCid }), `piece ${pieceCid}`)
   }
 
   const owners = useMemo(() => {
@@ -127,20 +126,20 @@ export function Inspector(props: { network: Network | undefined }) {
             <input value={cid} onChange={(event) => setCid(event.target.value)} placeholder="bafkzcib…" />
           </label>
           <div className="row">
-            <button type="button" className="button ghost compact" disabled={!cid.trim() || !props.network?.sp} onClick={() => fetchPiece(cid.trim()).catch(fail)}>
-              Fetch from the SP
+            <button type="button" className="button ghost compact" disabled={!cid.trim() || !env} onClick={() => fetchPiece(cid.trim()).catch(fail)}>
+              Fetch with Synapse
             </button>
-            {dataSet && env ? (
+            {stored && current && env ? (
               <button
                 type="button"
                 className="button ghost compact"
                 onClick={() =>
-                  listPiecesOnChain(readerFor(env.network), dataSet.id)
-                    .then((list: { pieceCid: string }[]) => setPieces(list.map((piece) => piece.pieceCid)))
+                  keyspacePieces(env.network, env.owner, current.keyspace)
+                    .then((list) => setPieces(list.map((piece) => piece.cid)))
                     .catch(fail)
                 }
               >
-                List dataset {dataSet.id.toString()}'s pieces
+                List this keyspace's pieces
               </button>
             ) : null}
           </div>
@@ -229,7 +228,7 @@ export function Inspector(props: { network: Network | undefined }) {
         </>
       ) : (
         <p className="muted small">
-          Try a quick pick: your agents' grants appear above once they exist, and "List pieces" shows your dataset's pieces.
+          Try a quick pick: your agents' grants appear above once they exist, and "List this keyspace's pieces" shows what is stored.
         </p>
       )}
     </div>

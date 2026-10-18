@@ -29,7 +29,7 @@ export function App(props: { networks: Network[] }) {
       {network ? <p className="network-note">{network.note}</p> : null}
 
       <main className="grid">
-        <Panel step={1} area="owner" title="Owner" lede="Start a keyspace with your wallet, create a dataset, and get your keys back from the chain alone.">
+        <Panel step={1} area="owner" title="Owner" lede="Start a keyspace with your wallet, store a first piece through Synapse, and get your keys back from the chain alone.">
           <OwnerPanel />
         </Panel>
         <Panel step={2} area="agents" title="Session keys" lede="Agents that write for you without your wallet, each with only the keys its job needs.">
@@ -38,11 +38,11 @@ export function App(props: { networks: Network[] }) {
         <Panel area="activity" title="Activity" lede="Every wallet prompt is announced here before it appears.">
           <ActivityLog />
         </Panel>
-        <Panel step={3} area="matrix" title="Who can read what" lede="Each reader against each piece, using the real ciphertext from the SP.">
+        <Panel step={3} area="matrix" title="Who can read what" lede="Each reader against each piece, using the real ciphertext, fetched by Synapse.">
           <AccessMatrix />
         </Panel>
         <Panel step={4} area="inspector" title="Inspector" lede="Drop in a piece or a grant and see exactly what it says, byte by byte.">
-          <Inspector network={network} />
+          <Inspector />
         </Panel>
       </main>
 
