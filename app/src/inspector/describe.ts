@@ -34,6 +34,8 @@ export interface GrantView {
   grant?: Keysmith.Grant & Record<string, unknown>
   strictError?: string
   aad?: Hex
+  /** Set when the bytes are a delivery: the claim chain that came with the grant. */
+  chain?: Keysmith.ClaimChain
 }
 export interface UnknownView {
   kind: 'unknown'
@@ -66,7 +68,8 @@ export function inspectBytes(bytes: Uint8Array): View {
   }
   if (root.major === 6 && (root.tag === 16 || root.tag === 96)) return describePiece(bytes, root)
   if (root.major === 5) return describeGrant(bytes, root)
-  return { kind: 'unknown', fields: [field('CBOR item', root, 0, 'structure')], reason: 'Neither a FEE envelope (CBOR tag 16 or 96) nor a Keysmith grant (a CBOR map).' }
+  if (root.major === 4) return describeDelivery(bytes, root)
+  return { kind: 'unknown', fields: [field('CBOR item', root, 0, 'structure')], reason: 'Neither a FEE envelope (CBOR tag 16 or 96), a Keysmith grant (a CBOR map), nor a delivery (an array).' }
 }
 
 const field = (label: string, node: { start: number; end: number }, depth: number, group: Group, value?: string, note?: string): Field => ({
@@ -158,7 +161,20 @@ const GRANT_FIELDS: Record<number, { label: string; group: Group; note: string }
 }
 
 function describeGrant(bytes: Uint8Array, root: CborNode): GrantView {
-  const fields: Field[] = [field(`map of ${root.entries?.length ?? 0}`, { start: root.start, end: root.head }, 0, 'structure', 'Keysmith grant')]
+  const fields = grantFields(root, 0)
+  if (root.end < bytes.length) fields.push(field('trailing bytes', { start: root.end, end: bytes.length }, 0, 'info', `${bytes.length - root.end} B`, 'not part of a grant'))
+  try {
+    const grant = Keysmith.decodeGrant(bytes)
+    return { kind: 'grant', fields, grant, aad: aadOf(grant) }
+  } catch (err) {
+    return { kind: 'grant', fields, strictError: (err as Error).message }
+  }
+}
+
+const aadOf = (grant: Keysmith.Grant): Hex => bytesToHex(encode([grant.v, grant.node, hexToBytes(grant.owner), hexToBytes(grant.keyspace)]))
+
+function grantFields(root: CborNode, depth: number): Field[] {
+  const fields: Field[] = [field(`map of ${root.entries?.length ?? 0}`, { start: root.start, end: root.head }, depth, 'structure', 'Keysmith grant')]
   for (const [key, value] of root.entries ?? []) {
     const range = { start: key.start, end: value.end }
     const known = typeof key.value === 'number' ? GRANT_FIELDS[key.value] : undefined
@@ -166,14 +182,55 @@ function describeGrant(bytes: Uint8Array, root: CborNode): GrantView {
       fields.push(field(known?.label ?? 'ct', { start: key.start, end: value.head }, 1, 'wrap', '48 B', known?.note))
       fields.push(field('wrapped node key', { start: value.head, end: value.head + 32 }, 2, 'wrap', '32 B', 'only the recipient can unwrap it'))
       fields.push(field('tag', { start: value.head + 32, end: value.end }, 2, 'tag', '16 B', 'proves the key and the descriptor are unaltered'))
-    } else if (known) fields.push(field(known.label, range, 1, known.group, show(value.value), known.note))
-    else fields.push(field(String(key.value), range, 1, 'info', show(value.value), 'informational, not authenticated'))
+    } else if (known) fields.push(field(known.label, range, depth + 1, known.group, show(value.value), known.note))
+    else fields.push(field(String(key.value), range, depth + 1, 'info', show(value.value), 'informational, not authenticated'))
   }
-  if (root.end < bytes.length) fields.push(field('trailing bytes', { start: root.end, end: bytes.length }, 0, 'info', `${bytes.length - root.end} B`, 'not part of a grant'))
+  return fields
+}
+
+const LINK_FIELDS: Record<number, { label: string; group: Group; note: string }> = {
+  0: { label: 'v (0)', group: 'descriptor', note: 'claim format version 1' },
+  1: { label: 'node (1)', group: 'descriptor', note: 'what the bearer may fetch' },
+  2: { label: 'owner (2)', group: 'descriptor', note: 'the keyspace owner (root only)' },
+  3: { label: 'keyspace (3)', group: 'descriptor', note: 'the keyspace id (root only)' },
+  4: { label: 'bearer (4)', group: 'descriptor', note: 'who may present this link, and sign the next' },
+  5: { label: 'maxDepth (5)', group: 'descriptor', note: 'how many more links the bearer may add' },
+  6: { label: 'chainId (6)', group: 'descriptor', note: 'the network the claims are for (root only)' },
+  7: { label: 'keyCommitment (7)', group: 'header', note: "commitment to the node key: the bearer checks what it unwraps against it" },
+  8: { label: 'sig (8)', group: 'tag', note: "EIP-712 ReadGrant signature: the owner's on the root, the previous bearer's after" },
+  9: { label: 'pieceCid (9)', group: 'info', note: 'where a piece link\'s piece lives: a locator, not signed' },
+  10: { label: 'keyspaceCommitment (10)', group: 'header', note: "the dataset's foc/kc (root only)" },
+  11: { label: 'expires (11)', group: 'header', note: 'the whole chain stops working then: set to the session key expiry (root only)' },
+}
+
+/** A delivery, as `filecoin-pin login` saves it (KEYSPACE_GRANT): [1, claim chain, v1 grant bytes]. */
+function describeDelivery(bytes: Uint8Array, root: CborNode): GrantView | UnknownView {
+  const [version, chain, grantBytes] = root.items ?? []
+  if (root.items?.length !== 3 || version.value !== 1 || chain.major !== 4 || grantBytes.major !== 2) {
+    return { kind: 'unknown', fields: [field('CBOR array', root, 0, 'structure')], reason: 'An array, but not a Keysmith delivery: [1, claim chain, grant].' }
+  }
+  const fields: Field[] = [
+    field('array of 3', { start: root.start, end: root.head }, 0, 'structure', 'Keysmith delivery', '[version, claim chain, grant]: the key and the right to fetch'),
+    field('version', version, 1, 'structure', '1'),
+    field(`chain of ${chain.items?.length ?? 0}`, { start: chain.start, end: chain.head }, 1, 'structure', undefined, 'root first; Curio checks this on every gated GET'),
+  ]
+  for (const [i, link] of (chain.items ?? []).entries()) {
+    fields.push(field(`link ${i}`, { start: link.start, end: link.head }, 2, 'structure', `${link.end - link.start} B`, i === 0 ? "signed by the owner's wallet" : `signed by link ${i - 1}'s bearer`))
+    for (const [key, value] of link.entries ?? []) {
+      const known = typeof key.value === 'number' ? LINK_FIELDS[key.value] : undefined
+      const shown = key.value === 11 ? `${value.value} (${new Date(Number(value.value) * 1000).toISOString()})` : show(value.value)
+      fields.push(field(known?.label ?? String(key.value), { start: key.start, end: value.end }, 3, known?.group ?? 'info', shown, known?.note ?? 'unknown field'))
+    }
+  }
+  fields.push(field('grant', { start: grantBytes.start, end: grantBytes.head }, 1, 'structure', `${grantBytes.end - grantBytes.head} B`, 'a Keysmith v1 grant, as bytes: the node key wrapped to the bearer'))
   try {
-    const grant = Keysmith.decodeGrant(bytes)
-    const aad = bytesToHex(encode([grant.v, grant.node, hexToBytes(grant.owner), hexToBytes(grant.keyspace)]))
-    return { kind: 'grant', fields, grant, aad }
+    fields.push(...grantFields(parseCbor(bytes, grantBytes.head), 2))
+  } catch {
+    // unreadable grant bytes: the strict decode below says why
+  }
+  try {
+    const { chain: claims, grant } = Keysmith.decodeDelivery(bytes)
+    return { kind: 'grant', fields, grant: grant as GrantView['grant'], aad: aadOf(grant), chain: claims }
   } catch (err) {
     return { kind: 'grant', fields, strictError: (err as Error).message }
   }

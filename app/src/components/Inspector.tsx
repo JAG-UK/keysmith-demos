@@ -13,7 +13,8 @@ const SHOWN = 1536 // bytes of hex before the view trims; the fields still cover
 
 /** Hex, base64 or base64url text, as bytes. */
 function bytesFromText(text: string): Uint8Array {
-  const clean = text.trim().replace(/\s+/g, '')
+  // A whole session.env line pastes too: KEYSPACE_GRANT=<base64url>.
+  const clean = text.trim().replace(/^[A-Z_]+=/, '').replace(/\s+/g, '')
   if (/^(0x)?[0-9a-fA-F]+$/.test(clean) && clean.replace(/^0x/, '').length % 2 === 0) return hexToBytes(`0x${clean.replace(/^0x/, '')}` as Hex)
   const base64 = clean.replace(/-/g, '+').replace(/_/g, '/')
   const binary = atob(base64 + '='.repeat((4 - (base64.length % 4)) % 4))
@@ -167,7 +168,7 @@ export function Inspector() {
       {input && view ? (
         <>
           <div className="row">
-            <strong>{view.kind === 'piece' ? 'A FEE-encrypted piece' : view.kind === 'grant' ? 'A Keysmith grant' : 'Unrecognised bytes'}</strong>
+            <strong>{view.kind === 'piece' ? 'A FEE-encrypted piece' : view.kind === 'grant' ? (view.chain ? `A Keysmith delivery: claim chain + grant, ${view.chain.links.length} link(s), expires ${new Date(view.chain.expires * 1000).toLocaleString()}` : 'A Keysmith grant') : 'Unrecognised bytes'}</strong>
             <span className="muted small">
               {input.source} · {input.bytes.length} B
               {view.kind === 'piece' ? ` · ${view.algorithm} · ${view.envelopeSize} B envelope + ${input.bytes.length - view.envelopeSize} B ciphertext, ${view.chunkCount} chunk(s)` : ''}

@@ -11,7 +11,8 @@
     "web": "vite --strictPort",
     "app": "vite --config vite.app.config.mjs --strictPort",
     "app:build": "vite build --config vite.app.config.mjs",
-    "app:check": "tsc -p app --noEmit"
+    "app:check": "tsc -p app --noEmit",
+    "fund": "node fund-wallet.mjs"
   },
   "dependencies": {
     "@filoz/synapse-core": "^0.10.1",
